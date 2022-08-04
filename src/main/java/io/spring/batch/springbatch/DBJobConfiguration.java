@@ -20,6 +20,10 @@ import java.util.Map;
 public class DBJobConfiguration {
     private final JobBuilderFactory jobBuilderFactory;
     private final StepBuilderFactory stepBuilderFactory;
+    private final CustomTasklet1 customTasklet1;
+    private final CustomTasklet2 customTasklet2;
+    private final CustomTasklet3 customTasklet3;
+    private final CustomTasklet4 customTasklet4;
 
     @Bean
     public Job job() {
@@ -27,6 +31,9 @@ public class DBJobConfiguration {
                 .start(step1())
                 .next(step2())
                 .next(step3())
+                .next(step4())
+                .next(step5())
+                .next(step6())
                 .build();
     }
 
@@ -69,8 +76,29 @@ public class DBJobConfiguration {
     }
     @Bean
     public Step step3() {
-        return stepBuilderFactory.get("step3")
-                .tasklet(new CustomTasklet())
+        return stepBuilderFactory.get("custom step1")
+                .tasklet(customTasklet1)
+                .build();
+
+    }
+    @Bean
+    public Step step4() {
+        return stepBuilderFactory.get("custom step2")
+                .tasklet(customTasklet2)
+                .build();
+
+    }
+    @Bean
+    public Step step5() {
+        return stepBuilderFactory.get("custom step3")
+                .tasklet(customTasklet3)
+                .build();
+
+    }
+    @Bean
+    public Step step6() {
+        return stepBuilderFactory.get("custom step4")
+                .tasklet(customTasklet4)
                 .build();
 
     }
