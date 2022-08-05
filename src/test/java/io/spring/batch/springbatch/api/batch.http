@@ -1,0 +1,14 @@
+###
+POST http://localhost:8077/batch
+Content-Type: application/json
+
+{
+  "id": "leaven"
+}
+###
+POST http://localhost:8077/asy-batch
+Content-Type: application/json
+
+{
+  "id": "leaven"
+}

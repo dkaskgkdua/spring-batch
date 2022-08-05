@@ -10,6 +10,8 @@ spring:
         format_sql: true
       jdbc:
         non_contextual_creation: true
+server:
+  port: 8077
 
 ---
 spring:
