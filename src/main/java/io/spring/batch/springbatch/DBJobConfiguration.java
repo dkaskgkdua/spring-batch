@@ -24,6 +24,7 @@ public class DBJobConfiguration {
     private final CustomTasklet2 customTasklet2;
     private final CustomTasklet3 customTasklet3;
     private final CustomTasklet4 customTasklet4;
+    private final JobRepositoryListener jobRepositoryListener;
 
     @Bean
     public Job job() {
@@ -34,6 +35,7 @@ public class DBJobConfiguration {
                 .next(step4())
                 .next(step5())
                 .next(step6())
+                .listener(jobRepositoryListener)
                 .build();
     }
 

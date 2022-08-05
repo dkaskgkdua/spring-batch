@@ -25,8 +25,9 @@ public class JobRunner
     public void run(ApplicationArguments args) throws Exception {
         JobParameters jobParameters = new JobParametersBuilder()
                 .addString("name", "user1")
-                .addLong("seq", 2L)
-                .addDouble("age", 16.5)
+//                .addLong("seq", 4L)
+//                .addDouble("age", 16.5)
+                .addString("requestDate", "20220805")
                 .toJobParameters();
         jobLauncher.run(job, jobParameters);
     }
