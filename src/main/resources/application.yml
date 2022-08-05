@@ -42,5 +42,7 @@ spring:
   batch:
     jdbc:
       initialize-schema: always
+#      table-prefix: BATCH_  # 테이블 프리픽스(기본 BATCH_)
     job:
-      enabled: false # 기본실행 안되게
+      names: ${job.name:NONE}
+#      enabled: false # 기본실행 안되게

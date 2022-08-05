@@ -7,7 +7,10 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.job.builder.FlowBuilder;
+import org.springframework.batch.core.job.flow.Flow;
 import org.springframework.batch.core.scope.context.ChunkContext;
+import org.springframework.batch.core.step.builder.FlowStepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
@@ -26,16 +29,27 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
 
+//    --job.name=job name=user2 requestDate=20220805
+//    @Bean
+//    public Job job() {
+//        return jobBuilderFactory.get("job")
+//                .start(step1())
+//                .next(step2())
+//                .next(step3())
+//                .next(step4())
+//                .next(step5())
+//                .next(step6())
+//                .listener(jobRepositoryListener)
+//                .build();
+//    }
+
+    // --job.name=flowJob
     @Bean
-    public Job job() {
-        return jobBuilderFactory.get("job")
-                .start(step1())
-                .next(step2())
-                .next(step3())
-                .next(step4())
-                .next(step5())
-                .next(step6())
-                .listener(jobRepositoryListener)
+    public Job flowJob() {
+        return jobBuilderFactory.get("flowJob")
+                .start(flow())
+                .next(step9())
+                .end()
                 .build();
     }
 
@@ -103,5 +117,42 @@ public class DBJobConfiguration {
                 .tasklet(customTasklet4)
                 .build();
 
+    }
+
+    @Bean
+    public Flow flow() {
+        FlowBuilder<Flow> flowBuilder = new FlowBuilder<>("flow");
+        flowBuilder.start(step7())
+                .next(step8())
+                .end();
+        return flowBuilder.build();
+    }
+
+    @Bean
+    public Step step7() {
+        return stepBuilderFactory.get("step7")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("step7 !");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+    @Bean
+    public Step step8() {
+        return stepBuilderFactory.get("step8")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("step8 !");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+    @Bean
+    public Step step9() {
+        return stepBuilderFactory.get("step9")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("step9 !");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
     }
 }
