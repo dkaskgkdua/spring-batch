@@ -1,14 +1,12 @@
 package io.spring.batch.springbatch;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.batch.core.Job;
-import org.springframework.batch.core.JobParameters;
-import org.springframework.batch.core.Step;
-import org.springframework.batch.core.StepContribution;
+import org.springframework.batch.core.*;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
+import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.builder.FlowStepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
@@ -44,12 +42,41 @@ public class DBJobConfiguration {
 //    }
 
     // --job.name=flowJob
+//    @Bean
+//    public Job flowJob() {
+//        return jobBuilderFactory.get("flowJob")
+//                .start(flow())
+//                .next(step9())
+//                .end()
+//                .build();
+//    }
+
+    //--job.name=configJob
     @Bean
-    public Job flowJob() {
-        return jobBuilderFactory.get("flowJob")
-                .start(flow())
-                .next(step9())
-                .end()
+    public Job SampleConfigJob() {
+        return jobBuilderFactory.get("configJob")
+                .start(step1())
+                .next(step2())
+                .next(failedStep())
+                .incrementer(new RunIdIncrementer())
+                .validator(new JobParametersValidator() {
+                    @Override
+                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
+
+                    }
+                })
+                .preventRestart()
+                .listener(new JobExecutionListener() {
+                    @Override
+                    public void beforeJob(JobExecution jobExecution) {
+
+                    }
+
+                    @Override
+                    public void afterJob(JobExecution jobExecution) {
+
+                    }
+                })
                 .build();
     }
 
@@ -151,6 +178,18 @@ public class DBJobConfiguration {
         return stepBuilderFactory.get("step9")
                 .tasklet((stepContribution, chunkContext) -> {
                     System.out.println("step9 !");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+
+    @Bean
+    public Step failedStep() {
+        return stepBuilderFactory.get("failedStep")
+                .tasklet((stepContribution, chunkContext) -> {
+                    chunkContext.getStepContext().getStepExecution().setStatus(BatchStatus.FAILED);
+                    stepContribution.setExitStatus(ExitStatus.STOPPED);
+                    System.out.println("failedStep has executed!");
                     return RepeatStatus.FINISHED;
                 })
                 .build();
