@@ -18,10 +18,11 @@ public class JobRepositoryListener implements JobExecutionListener {
 
     @Override
     public void afterJob(JobExecution jobExecution) {
+        System.out.println("after job executed!");
         String jobName = jobExecution.getJobInstance().getJobName();
         JobParameters jobParameters = new JobParametersBuilder()
                 .addString("requestDate", "20220805")
-                .addString("name", "user1")
+                .addString("name3", "user1")
                 .toJobParameters();
 
         JobExecution lastJobExecution = jobRepository.getLastJobExecution(jobName, jobParameters);

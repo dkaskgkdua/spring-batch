@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.job.DefaultJobParametersValidator;
 import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
@@ -59,12 +60,17 @@ public class DBJobConfiguration {
                 .next(step2())
                 .next(failedStep())
                 .incrementer(new RunIdIncrementer())
-                .validator(new JobParametersValidator() {
-                    @Override
-                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
-
-                    }
-                })
+                // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
+                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate"}, new String[]{"count"}))
+//              익명클래스 형태 커스텀 벨리데이트
+//                .validator(new JobParametersValidator() {
+//                    @Override
+//                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
+//
+//                    }
+//                })
+                // 커스텀 벨리데이트
+//                .validator(new CustomJobParametersValidator())
                 .preventRestart()
                 .listener(new JobExecutionListener() {
                     @Override
