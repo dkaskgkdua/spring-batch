@@ -11,10 +11,14 @@ import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.builder.FlowStepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
+import org.springframework.batch.item.*;
+import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 @Configuration
@@ -27,6 +31,18 @@ public class DBJobConfiguration {
     private final CustomTasklet3 customTasklet3;
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
+
+
+    // --job.name=caseJob
+    @Bean
+    public Job caseJob() {
+        return jobBuilderFactory.get("caseJob")
+                .start(step1())
+                .next(chunkStep())
+//                .next(partitionerStep())
+                .incrementer(new CustomJobParametersIncrementer())
+                .build();
+    }
 
 //    --job.name=job name=user2 requestDate=20220805
 //    @Bean
@@ -53,40 +69,40 @@ public class DBJobConfiguration {
 //    }
 
     //--job.name=configJob
-    @Bean
-    public Job SampleConfigJob() {
-        return jobBuilderFactory.get("configJob")
-                .start(step1())
-                .next(step2())
-                .next(errorStep())
-                .incrementer(new CustomJobParametersIncrementer())
-                // 기본 제공 인크리먼터
-//                .incrementer(new RunIdIncrementer())
-                // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
-                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate", "run.id"}, new String[]{"count"}))
-//              익명클래스 형태 커스텀 벨리데이트
-//                .validator(new JobParametersValidator() {
+//    @Bean
+//    public Job SampleConfigJob() {
+//        return jobBuilderFactory.get("configJob")
+//                .start(step1())
+//                .next(step2())
+//                .next(errorStep())
+//                .incrementer(new CustomJobParametersIncrementer())
+//                // 기본 제공 인크리먼터
+////                .incrementer(new RunIdIncrementer())
+//                // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
+//                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate", "run.id"}, new String[]{"count"}))
+////              익명클래스 형태 커스텀 벨리데이트
+////                .validator(new JobParametersValidator() {
+////                    @Override
+////                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
+////
+////                    }
+////                })
+//                // 커스텀 벨리데이트
+////                .validator(new CustomJobParametersValidator())
+//                .preventRestart()
+//                .listener(new JobExecutionListener() {
 //                    @Override
-//                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
+//                    public void beforeJob(JobExecution jobExecution) {
+//
+//                    }
+//
+//                    @Override
+//                    public void afterJob(JobExecution jobExecution) {
 //
 //                    }
 //                })
-                // 커스텀 벨리데이트
-//                .validator(new CustomJobParametersValidator())
-                .preventRestart()
-                .listener(new JobExecutionListener() {
-                    @Override
-                    public void beforeJob(JobExecution jobExecution) {
-
-                    }
-
-                    @Override
-                    public void afterJob(JobExecution jobExecution) {
-
-                    }
-                })
-                .build();
-    }
+//                .build();
+//    }
 
     @Bean
     public Step step1() {
@@ -212,4 +228,67 @@ public class DBJobConfiguration {
                 })
                 .build();
     }
+
+    @Bean
+    public Step chunkStep() {
+        return stepBuilderFactory.get("chunkStep")
+                .<String, String>chunk(10)
+//                .reader(new ItemReader<String>() {
+//                    @Override
+//                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+//                        System.out.println("chunk read!");
+//                        return null;
+//                    }
+//                })
+                .reader(new ListItemReader<>(Arrays.asList("item1", "item2","item3", "item4","item5", "item6")))
+                .processor(new ItemProcessor<String, String>() {
+                    @Override
+                    public String process(String item) throws Exception {
+
+                        return item.toUpperCase();
+                    }
+                })
+                .writer(new ItemWriter<String>() {
+                    @Override
+                    public void write(List<? extends String> items) throws Exception {
+                        items.forEach(item -> System.out.println("item = " + item));
+                        System.out.println("chunk write!");
+                    }
+                })
+                .build();
+    }
+
+    // 멀티스레드 작업을 위한 파티셔너 스텝
+    @Bean
+    public Step partitionerStep() {
+        return stepBuilderFactory.get("partitionerStep")
+                .partitioner(step1())
+                .gridSize(2)
+                .build();
+    }
+
+    @Bean
+    public Step jobStep() {
+        return stepBuilderFactory.get("jobStep")
+                .job(jobForStep())
+                .build();
+    }
+
+    @Bean
+    public Step flowStep() {
+        return stepBuilderFactory.get("flowStep")
+                .flow(flow())
+                .build();
+    }
+
+    @Bean
+    public Job jobForStep() {
+        return this.jobBuilderFactory.get("job")
+                .start(step1())
+                .next(step2())
+                .next(step3())
+                .build();
+    }
+
+
 }
