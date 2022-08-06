@@ -58,10 +58,12 @@ public class DBJobConfiguration {
         return jobBuilderFactory.get("configJob")
                 .start(step1())
                 .next(step2())
-                .next(failedStep())
-                .incrementer(new RunIdIncrementer())
+                .next(errorStep())
+                .incrementer(new CustomJobParametersIncrementer())
+                // 기본 제공 인크리먼터
+//                .incrementer(new RunIdIncrementer())
                 // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
-                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate"}, new String[]{"count"}))
+                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate", "run.id"}, new String[]{"count"}))
 //              익명클래스 형태 커스텀 벨리데이트
 //                .validator(new JobParametersValidator() {
 //                    @Override
@@ -197,6 +199,16 @@ public class DBJobConfiguration {
                     stepContribution.setExitStatus(ExitStatus.STOPPED);
                     System.out.println("failedStep has executed!");
                     return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+
+    @Bean
+    public Step errorStep() {
+        return stepBuilderFactory.get("errorStep")
+                .tasklet((stepContribution, chunkContext) -> {
+                    throw new RuntimeException("errorStep was failed");
+//                    return RepeatStatus.FINISHED;
                 })
                 .build();
     }
