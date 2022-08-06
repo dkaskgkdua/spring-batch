@@ -7,9 +7,12 @@ import org.springframework.batch.core.configuration.annotation.StepBuilderFactor
 import org.springframework.batch.core.job.DefaultJobParametersValidator;
 import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
+import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.builder.FlowStepBuilder;
+import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
+import org.springframework.batch.core.step.job.JobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.support.ListItemReader;
@@ -32,6 +35,15 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
 
+    // 상속관계 형태의 Job
+    // --job.name=parentJob
+    @Bean
+    public Job parentJob() {
+        return jobBuilderFactory.get("parentJob")
+                .start(jobStep())
+                .next(step9())
+                .build();
+    }
 
     // --job.name=caseJob
     @Bean
@@ -40,69 +52,108 @@ public class DBJobConfiguration {
                 .start(step1())
                 .next(chunkStep())
 //                .next(partitionerStep())
-                .incrementer(new CustomJobParametersIncrementer())
+                .next(errorStep())
+//                .incrementer(new CustomJobParametersIncrementer())
                 .build();
     }
 
 //    --job.name=job name=user2 requestDate=20220805
-//    @Bean
-//    public Job job() {
-//        return jobBuilderFactory.get("job")
-//                .start(step1())
-//                .next(step2())
-//                .next(step3())
-//                .next(step4())
-//                .next(step5())
-//                .next(step6())
-//                .listener(jobRepositoryListener)
-//                .build();
-//    }
+    @Bean
+    public Job job() {
+        return jobBuilderFactory.get("job")
+                .start(step1())
+                .next(step2())
+                .next(step3())
+                .next(step4())
+                .next(step5())
+                .next(step6())
+                .listener(jobRepositoryListener)
+                .build();
+    }
+
+    @Bean
+    public Job detailFlowJob() {
+        return jobBuilderFactory.get("detailFlowJob")
+                .start(step1())
+                .on("COMPLETED").to(step3())
+                .from(step1())
+                .on("FAILED").to(step2())
+                .end()
+                .build();
+    }
 
     // --job.name=flowJob
-//    @Bean
-//    public Job flowJob() {
-//        return jobBuilderFactory.get("flowJob")
-//                .start(flow())
-//                .next(step9())
-//                .end()
-//                .build();
-//    }
+    @Bean
+    public Job flowJob() {
+        return jobBuilderFactory.get("flowJob")
+                .start(flow())
+                .next(step9())
+                .end()
+                .build();
+    }
+
+    @Bean
+    public Job flowJob2() {
+        return jobBuilderFactory.get("flowJob2")
+                .start(flowA())
+                .next(step1())
+                .next(flowB())
+                .next(step2())
+                .end()
+                .build();
+    }
+
+    private Flow flowB() {
+        FlowBuilder<Flow> flowBuilder = new FlowBuilder<>("flowA");
+        flowBuilder.start(step6())
+                .next(step7())
+                .end();
+        return flowBuilder.build();
+    }
+
+    private Flow flowA() {
+        FlowBuilder<Flow> flowBuilder = new FlowBuilder<>("flowA");
+        flowBuilder.start(step8())
+                .next(step9())
+                .end();
+        return flowBuilder.build();
+    }
 
     //--job.name=configJob
-//    @Bean
-//    public Job SampleConfigJob() {
-//        return jobBuilderFactory.get("configJob")
-//                .start(step1())
-//                .next(step2())
-//                .next(errorStep())
-//                .incrementer(new CustomJobParametersIncrementer())
-//                // 기본 제공 인크리먼터
-////                .incrementer(new RunIdIncrementer())
-//                // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
-//                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate", "run.id"}, new String[]{"count"}))
-////              익명클래스 형태 커스텀 벨리데이트
-////                .validator(new JobParametersValidator() {
-////                    @Override
-////                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
-////
-////                    }
-////                })
-//                // 커스텀 벨리데이트
-////                .validator(new CustomJobParametersValidator())
-//                .preventRestart()
-//                .listener(new JobExecutionListener() {
+    @Bean
+    public Job SampleConfigJob() {
+        return jobBuilderFactory.get("configJob")
+                .start(step1())
+                .next(step2())
+                .next(errorStep())
+                .incrementer(new CustomJobParametersIncrementer())
+                // 기본 제공 인크리먼터
+//                .incrementer(new RunIdIncrementer())
+                // 기본 벨리데이트에 옵션 추가(필수값, 옵션값)
+                .validator(new DefaultJobParametersValidator(new String[]{"name", "requestDate", "run.id"}, new String[]{"count"}))
+//              익명클래스 형태 커스텀 벨리데이트
+//                .validator(new JobParametersValidator() {
 //                    @Override
-//                    public void beforeJob(JobExecution jobExecution) {
-//
-//                    }
-//
-//                    @Override
-//                    public void afterJob(JobExecution jobExecution) {
+//                    public void validate(JobParameters jobParameters) throws JobParametersInvalidException {
 //
 //                    }
 //                })
-//                .build();
-//    }
+                // 커스텀 벨리데이트
+//                .validator(new CustomJobParametersValidator())
+                .preventRestart()
+                .listener(new JobExecutionListener() {
+                    @Override
+                    public void beforeJob(JobExecution jobExecution) {
+
+                    }
+
+                    @Override
+                    public void afterJob(JobExecution jobExecution) {
+
+                    }
+                })
+                .build();
+    }
 
     @Bean
     public Step step1() {
@@ -125,6 +176,8 @@ public class DBJobConfiguration {
                         return RepeatStatus.FINISHED;
                     }
                 })
+                // 성공종료 해도 무조건 실행
+                .allowStartIfComplete(true)
                 .build();
 
     }
@@ -223,9 +276,11 @@ public class DBJobConfiguration {
     public Step errorStep() {
         return stepBuilderFactory.get("errorStep")
                 .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("errorStep execution");
                     throw new RuntimeException("errorStep was failed");
 //                    return RepeatStatus.FINISHED;
                 })
+                .startLimit(3)
                 .build();
     }
 
@@ -271,7 +326,28 @@ public class DBJobConfiguration {
     public Step jobStep() {
         return stepBuilderFactory.get("jobStep")
                 .job(jobForStep())
+//                .launcher(jobLauncher)
+                // Step의 ExecutionContext를 job이 실행되는데 필요한 JobParameter로 변경
+                .parametersExtractor(jobParametersExtractor())
+                .listener(new StepExecutionListener() {
+                    @Override
+                    public void beforeStep(StepExecution stepExecution) {
+                        //jobParametersExtractor에서 name 키값을 받아오기 위한 세팅
+                        stepExecution.getExecutionContext().put("name", "user1");
+                    }
+
+                    @Override
+                    public ExitStatus afterStep(StepExecution stepExecution) {
+                        return null;
+                    }
+                })
                 .build();
+    }
+
+    private DefaultJobParametersExtractor jobParametersExtractor() {
+        DefaultJobParametersExtractor extractor = new DefaultJobParametersExtractor();
+        extractor.setKeys(new String[]{"name"});
+        return extractor;
     }
 
     @Bean
