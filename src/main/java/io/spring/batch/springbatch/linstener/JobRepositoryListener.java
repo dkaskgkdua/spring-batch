@@ -1,4 +1,4 @@
-package io.spring.batch.springbatch;
+package io.spring.batch.springbatch.linstener;
 
 import org.springframework.batch.core.*;
 import org.springframework.batch.core.repository.JobRepository;

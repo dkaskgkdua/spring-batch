@@ -1,5 +1,8 @@
 package io.spring.batch.springbatch;
 
+import io.spring.batch.springbatch.decider.CustomDecider;
+import io.spring.batch.springbatch.linstener.JobRepositoryListener;
+import io.spring.batch.springbatch.linstener.PassCheckingListener;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -7,12 +10,10 @@ import org.springframework.batch.core.configuration.annotation.StepBuilderFactor
 import org.springframework.batch.core.job.DefaultJobParametersValidator;
 import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
-import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.batch.core.job.flow.JobExecutionDecider;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
-import org.springframework.batch.core.step.builder.FlowStepBuilder;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
-import org.springframework.batch.core.step.job.JobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.support.ListItemReader;
@@ -35,6 +36,33 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
 
+
+    @Bean
+    public Job deciderJob() {
+        return jobBuilderFactory.get("deciderJob")
+                .incrementer(new RunIdIncrementer())
+                .start(step1())
+                .next(decider())
+                .from(decider()).on("ODD").to(step7())
+                .from(decider()).on("EVEN").to(step8())
+                .end()
+                .build();
+    }
+
+    // 사용자 정의 ExitStatus 예제
+    @Bean
+    public Job customCodeJob() {
+        return jobBuilderFactory.get("customCodeJob")
+                .start(failedStep())
+                    .on("FAILED")
+                    .to(applyCustomListenerStep())
+                // 만약 PASS를 제외한 다른 상태코드가 온다면 최종 job은 실패로 끝난다
+                // 이유는 지정해준 코드값이 없기 때문에
+                    .on("PASS")
+                    .stop()
+                .end()
+                .build();
+    }
 
     // 상속관계 형태의 Job
     // --job.name=parentJob
@@ -298,7 +326,7 @@ public class DBJobConfiguration {
         return stepBuilderFactory.get("failedStep")
                 .tasklet((stepContribution, chunkContext) -> {
                     chunkContext.getStepContext().getStepExecution().setStatus(BatchStatus.FAILED);
-                    stepContribution.setExitStatus(ExitStatus.STOPPED);
+                    stepContribution.setExitStatus(ExitStatus.FAILED);
                     System.out.println("failedStep has executed!");
                     return RepeatStatus.FINISHED;
                 })
@@ -399,5 +427,20 @@ public class DBJobConfiguration {
                 .build();
     }
 
+    @Bean
+    public Step applyCustomListenerStep() {
+        return stepBuilderFactory.get("applyCustomListenerStep")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("applyCustomListenerStep executed");
+                    return RepeatStatus.FINISHED;
+                })
+                .listener(new PassCheckingListener())
+                .build();
+    }
+
+    @Bean
+    public JobExecutionDecider decider() {
+        return new CustomDecider();
+    }
 
 }
