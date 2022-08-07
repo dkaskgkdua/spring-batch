@@ -35,6 +35,7 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
 
+
     // 상속관계 형태의 Job
     // --job.name=parentJob
     @Bean
@@ -71,13 +72,45 @@ public class DBJobConfiguration {
                 .build();
     }
 
+    /**
+     * on : ExitStatus와 매칭하는 패턴 스키마
+     *      특수문자는
+     *       * : 모든 ExitStatus와 매칭 / 0개 이상)
+     *       ? : 정확히 1개의 문자와 매칭
+     *       ex) c*t 는 cat 또는 count와 같은 케이스에 매칭
+     *           c?t 는 cat에만 count는 안됨
+     */
     @Bean
     public Job detailFlowJob() {
         return jobBuilderFactory.get("detailFlowJob")
                 .start(step1())
-                .on("COMPLETED").to(step3())
+                .on(ExitStatus.COMPLETED.getExitCode()).to(step3())
                 .from(step1())
                 .on("FAILED").to(step2())
+                .end()
+                .build();
+    }
+
+    /**
+     * 총 3개의 Flow
+     *
+     */
+    @Bean
+    public Job transitionFlowJob() {
+        return jobBuilderFactory.get("transitionFlowJob")
+                .start(step1())
+                    .on("FAILED")
+                    .to(step2())
+                    .on("FAILED")
+                    .stop()
+                .from(step1())
+                    .on("*")
+                    .to(step3())
+                    .next(step4())
+                // 1 Flow에서 step2실행이 FAILED가 아니면 이쪽으로 온다
+                .from(step2())
+                    .on("*")
+                    .to(step5())
                 .end()
                 .build();
     }
