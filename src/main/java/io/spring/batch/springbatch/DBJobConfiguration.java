@@ -5,6 +5,9 @@ import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
 import io.spring.batch.springbatch.linstener.PassCheckingListener;
+import io.spring.batch.springbatch.processor.CustomItemProcessor;
+import io.spring.batch.springbatch.reader.CustomItemReader;
+import io.spring.batch.springbatch.writer.CustomItemWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -40,6 +43,40 @@ public class DBJobConfiguration {
     private final CustomTasklet3 customTasklet3;
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
+
+    @Bean
+    public Job chunkBaseJob() {
+        return jobBuilderFactory.get("chunkBaseJob")
+                .start(chunkStep1())
+                .next(step7())
+                .build();
+    }
+
+    @Bean
+    public Step chunkStep1() {
+        return stepBuilderFactory.get("chunkStep1")
+                .<Customer, Customer>chunk(3)
+                .reader(itemReader())
+                .processor(itemProcessor())
+                .writer(itemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<? super Customer> itemWriter() {
+        return new CustomItemWriter();
+    }
+
+    @Bean
+    public ItemProcessor<? super Customer, ? extends Customer> itemProcessor() {
+        return new CustomItemProcessor();
+    }
+
+    @Bean
+    public ItemReader<Customer> itemReader() {
+        return new CustomItemReader(Arrays.asList(new Customer("user1"),
+                new Customer("user2"),new Customer("user3")));
+    }
 
 
     @Bean
@@ -492,4 +529,6 @@ public class DBJobConfiguration {
             return RepeatStatus.FINISHED;
         };
     }
+
+
 }
