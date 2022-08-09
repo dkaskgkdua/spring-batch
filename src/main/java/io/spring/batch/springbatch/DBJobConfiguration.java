@@ -7,6 +7,8 @@ import io.spring.batch.springbatch.linstener.JobRepositoryListener;
 import io.spring.batch.springbatch.linstener.PassCheckingListener;
 import io.spring.batch.springbatch.processor.CustomItemProcessor;
 import io.spring.batch.springbatch.reader.CustomItemReader;
+import io.spring.batch.springbatch.reader.CustomItemStreamReader;
+import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
@@ -29,6 +31,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +46,38 @@ public class DBJobConfiguration {
     private final CustomTasklet3 customTasklet3;
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
+
+
+    @Bean
+    public Job chunkStreamJob() {
+        return jobBuilderFactory.get("batchJob")
+                .start(chunkStreamStep1())
+                .next(step2())
+                .build();
+    }
+
+    @Bean
+    public Step chunkStreamStep1() {
+        return stepBuilderFactory.get("chunkStreamStep1")
+                .<String, String>chunk(5)
+                .reader(itemStreamReader())
+                .writer(itemStreamWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<? super String> itemStreamWriter() {
+        return new CustomItemStreamWriter();
+    }
+
+    public CustomItemStreamReader itemStreamReader() {
+        List<String> items = new ArrayList<>(10);
+
+        for(int i = 0; i < 10; i++) {
+            items.add(String.valueOf(i));
+        }
+        return new CustomItemStreamReader(items);
+    }
 
     @Bean
     public Job chunkBaseJob() {
