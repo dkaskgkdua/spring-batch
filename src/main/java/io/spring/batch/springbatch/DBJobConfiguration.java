@@ -1,6 +1,7 @@
 package io.spring.batch.springbatch;
 
 import io.spring.batch.springbatch.decider.CustomDecider;
+import io.spring.batch.springbatch.dto.Customer2;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
@@ -8,6 +9,7 @@ import io.spring.batch.springbatch.linstener.PassCheckingListener;
 import io.spring.batch.springbatch.processor.CustomItemProcessor;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
+import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
 import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
 import lombok.RequiredArgsConstructor;
@@ -25,11 +27,15 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
+import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.mapping.DefaultLineMapper;
+import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.ClassPathResource;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -47,6 +53,44 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
 
+
+    @Bean
+    public Job flatFilesJob() {
+        return jobBuilderFactory.get("flatFilesJob")
+                .start(flatFilesStep())
+                .next(step2())
+                .build();
+    }
+
+    @Bean
+    public Step flatFilesStep() {
+        return stepBuilderFactory.get("flatFilesStep")
+                .<String, String>chunk(5)
+                .reader(platFilesItemReader())
+                .writer(new ItemWriter() {
+                    @Override
+                    public void write(List list) throws Exception {
+                        System.out.println("list = " + list);
+                    }
+                })
+                .build();
+    }
+
+    @Bean
+    public ItemReader platFilesItemReader() {
+        FlatFileItemReader<Customer2> itemReader = new FlatFileItemReader<>();
+        itemReader.setResource(new ClassPathResource("/csv/customer.csv"));
+
+        DefaultLineMapper<Customer2> lineMapper = new DefaultLineMapper<>();
+        lineMapper.setLineTokenizer(new DelimitedLineTokenizer());
+        lineMapper.setFieldSetMapper(new CustomerFieldSetMapper());
+
+        itemReader.setLineMapper(lineMapper);
+        // 첫 라인은 건너뛴다.(타이틀)
+        itemReader.setLinesToSkip(1);
+
+        return itemReader;
+    }
 
     @Bean
     public Job chunkStreamJob() {
