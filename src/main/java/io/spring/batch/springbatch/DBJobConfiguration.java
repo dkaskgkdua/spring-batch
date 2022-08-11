@@ -2,6 +2,7 @@ package io.spring.batch.springbatch;
 
 import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.Customer2;
+import io.spring.batch.springbatch.dto.Customer3;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
@@ -28,19 +29,22 @@ import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.file.FlatFileItemReader;
+import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
+import org.springframework.batch.item.file.transform.Range;
 import org.springframework.batch.item.support.ListItemReader;
+import org.springframework.batch.item.xml.StaxEventItemReader;
+import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.oxm.xstream.XStreamMarshaller;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Configuration
 @RequiredArgsConstructor
@@ -55,6 +59,51 @@ public class DBJobConfiguration {
 
 
     @Bean
+    public Job xmlFileJob() {
+        return jobBuilderFactory.get("xmlFileJob")
+                .start(xmlFileStep())
+                .next(step2())
+                .build();
+    }
+    @Bean
+    public Step xmlFileStep() {
+        return stepBuilderFactory.get("xmlFileStep")
+                .<Customer3, Customer3>chunk(5)
+                .reader(xmlFileItemReader())
+                .writer(new ItemWriter() {
+                    @Override
+                    public void write(List list) throws Exception {
+                        System.out.println("list = " + list);
+                    }
+                })
+                .build();
+    }
+
+
+    @Bean
+    public StaxEventItemReader<Customer3> xmlFileItemReader() {
+        return new StaxEventItemReaderBuilder<Customer3>()
+                .name("xmlFileItemReader")
+                .resource(new ClassPathResource("/xml/customer.xml"))
+                .addFragmentRootElements("customer")
+                .unmarshaller(itemMarshaller())
+                .build();
+    }
+
+    @Bean
+    public XStreamMarshaller itemMarshaller() {
+        Map<String, Class<?>> aliases = new HashMap<>();
+        aliases.put("customer", Customer3.class);
+        aliases.put("id", Long.class);
+        aliases.put("firstName", String.class);
+        aliases.put("lastName", String.class);
+        aliases.put("birthdate", Date.class);
+        XStreamMarshaller xStreamMarshaller = new XStreamMarshaller();
+        xStreamMarshaller.setAliases(aliases);
+        return xStreamMarshaller;
+    }
+
+    @Bean
     public Job flatFilesJob() {
         return jobBuilderFactory.get("flatFilesJob")
                 .start(flatFilesStep())
@@ -66,7 +115,7 @@ public class DBJobConfiguration {
     public Step flatFilesStep() {
         return stepBuilderFactory.get("flatFilesStep")
                 .<String, String>chunk(5)
-                .reader(platFilesItemReader())
+                .reader(flatFileItemFixedTokenReader())
                 .writer(new ItemWriter() {
                     @Override
                     public void write(List list) throws Exception {
@@ -76,6 +125,9 @@ public class DBJobConfiguration {
                 .build();
     }
 
+    /**
+     * 기본적으로 제공해주는 Builder를 안쓰고 직접 만들때
+     */
     @Bean
     public ItemReader platFilesItemReader() {
         FlatFileItemReader<Customer2> itemReader = new FlatFileItemReader<>();
@@ -90,6 +142,55 @@ public class DBJobConfiguration {
         itemReader.setLinesToSkip(1);
 
         return itemReader;
+    }
+
+    /**
+     * 고정길이만큼 잘라서 읽고 반환해주는 리더
+     */
+    @Bean
+    public FlatFileItemReader flatFileItemFixedTokenReader() {
+        return new FlatFileItemReaderBuilder<Customer2>()
+                .name("flatFilesFactoryItemReader")
+                .resource(new ClassPathResource("/csv/customer.txt"))
+//                .fieldSetMapper(new CustomerFieldSetMapper()) // 커스텀 매퍼 사용시
+                .fieldSetMapper(new BeanWrapperFieldSetMapper<>())
+                // BeanWrapperFieldSetMapper 가 무슨 타입으로 매핑할 것인지 세팅
+                .targetType(Customer2.class)
+                .linesToSkip(1) // 첫 라인은 건너뛴다.(타이틀)
+                // 구분자 방식으로 한다.
+                .fixedLength()
+                // 파싱 에러에 엄격하게 적용할것인지
+                .strict(false)
+                .addColumns(new Range(1,5))
+                .addColumns(new Range(6,9))
+                .addColumns(new Range(10,11))
+                // 매핑할 필드명
+                .names("name", "year", "age")
+                .build()
+                ;
+    }
+
+    /**
+     * 리더를 빌더를 통해 생성할때, 구분자로 데이터 긁어옴
+     */
+    @Bean
+    public ItemReader flatFilesFactoryItemReader() {
+        return new FlatFileItemReaderBuilder<Customer2>()
+                .name("flatFilesFactoryItemReader")
+                .resource(new ClassPathResource("/csv/customer.csv"))
+//                .fieldSetMapper(new CustomerFieldSetMapper()) // 커스텀 매퍼 사용시
+                .fieldSetMapper(new BeanWrapperFieldSetMapper<>())
+                // BeanWrapperFieldSetMapper 가 무슨 타입으로 매핑할 것인지 세팅
+                .targetType(Customer2.class)
+                .linesToSkip(1) // 첫 라인은 건너뛴다.(타이틀)
+                // 구분자 방식으로 한다.
+                .delimited()
+                // 콤마로 구분
+                .delimiter(",")
+                // 매핑할 필드명
+                .names("name", "age", "year")
+                .build()
+                ;
     }
 
     @Bean
