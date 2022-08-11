@@ -3,6 +3,7 @@ package io.spring.batch.springbatch;
 import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.Customer2;
 import io.spring.batch.springbatch.dto.Customer3;
+import io.spring.batch.springbatch.dto.Customer4;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
@@ -28,12 +29,15 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
+import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.file.transform.Range;
+import org.springframework.batch.item.json.JacksonJsonObjectReader;
+import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.item.xml.StaxEventItemReader;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
@@ -44,6 +48,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.oxm.xstream.XStreamMarshaller;
 
+import javax.sql.DataSource;
 import java.util.*;
 
 @Configuration
@@ -56,7 +61,77 @@ public class DBJobConfiguration {
     private final CustomTasklet3 customTasklet3;
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
+    private final DataSource dataSource;
 
+
+    @Bean
+    public Job jdbcCursorJob() {
+        return jobBuilderFactory.get("jdbcCursorJob")
+                .start(jdbcCursorStep())
+                .build();
+    }
+
+    @Bean
+    public Step jdbcCursorStep() {
+        return stepBuilderFactory.get("jdbcCursorStep")
+                .<Customer3, Customer3>chunk(10)
+                .reader(jdbcCursorItemReader())
+                .writer(jdbcCursorItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<Customer3> jdbcCursorItemReader() {
+        return new JdbcCursorItemReaderBuilder<Customer3>()
+                .name("jdbcCursorItemReader")
+                .fetchSize(10)
+                .sql("select id, firstName, lastName, birthdate from customer where firstName like ? order by id")
+                .beanRowMapper(Customer3.class)
+                .queryArguments("mj%")
+                .dataSource(dataSource)
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<Customer3> jdbcCursorItemWriter() {
+        System.out.println("---writer---");
+        return items -> {
+            for(Customer3 item : items) {
+                System.out.println("item = " + item);
+            }
+        };
+    }
+
+    @Bean
+    public Job jsonFileJob() {
+        return jobBuilderFactory.get("jsonFileJob")
+                .start(jsonFileStep())
+                .next(step2())
+                .build();
+    }
+
+    @Bean
+    public Step jsonFileStep() {
+        return stepBuilderFactory.get("jsonFileStep")
+                .<Customer4, Customer4>chunk(5)
+                .reader(jsonFileItemReader())
+                .writer(new ItemWriter() {
+                    @Override
+                    public void write(List list) throws Exception {
+                        System.out.println("list = " + list);
+                    }
+                })
+                .build();
+    }
+
+    @Bean
+    public ItemReader<Customer4> jsonFileItemReader() {
+        return new JsonItemReaderBuilder<Customer4>()
+                .name("jsonFileItemReader")
+                .resource(new ClassPathResource("/json/customer.json"))
+                .jsonObjectReader(new JacksonJsonObjectReader<>(Customer4.class))
+                .build();
+    }
 
     @Bean
     public Job xmlFileJob() {
