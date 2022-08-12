@@ -30,8 +30,12 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
+import org.springframework.batch.item.database.Order;
+import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
+import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
+import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
@@ -48,6 +52,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.oxm.xstream.XStreamMarshaller;
 
 import javax.persistence.EntityManagerFactory;
@@ -67,6 +72,73 @@ public class DBJobConfiguration {
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
 
+    /**
+     * jdbc 기반 paging 배치 처리
+     * 여러 쓰레드에서 작업할 경우 synchronized가 걸려 있어 동시성 문제를 방지
+     */
+    @Bean
+    public Job jdbcPagingJob() throws Exception {
+        return jobBuilderFactory.get("jdbcPagingJob")
+                .incrementer(new RunIdIncrementer())
+                .start(jdbcPagingStep())
+                .build();
+    }
+
+    @Bean
+    public Step jdbcPagingStep() throws Exception {
+        return stepBuilderFactory.get("jdbcPagingStep")
+                .<Customer3,Customer3>chunk(3)
+                .reader(jdbcPagingItemReader())
+                .writer(jdbcPagingItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<? extends Customer3> jdbcPagingItemReader() throws Exception {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("firstname", "mj%");
+
+        return new JdbcPagingItemReaderBuilder<Customer3>()
+                .name("jdbcPagingItemReader")
+                .pageSize(10)
+                .dataSource(dataSource)
+                .rowMapper(new BeanPropertyRowMapper<>(Customer3.class))
+                .queryProvider(createQueryProvider())
+                .parameterValues(parameters)
+                .build();
+    }
+
+    @Bean
+    public PagingQueryProvider createQueryProvider() throws Exception {
+
+
+        SqlPagingQueryProviderFactoryBean factory = new SqlPagingQueryProviderFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setSelectClause("id,firstname,lastname,birthdate");
+        factory.setFromClause("from customer");
+        factory.setWhereClause("where firstname like :firstname");
+
+        Map<String, Order> sortKeys = new HashMap<>();
+        sortKeys.put("id", Order.ASCENDING);
+
+        factory.setSortKeys(sortKeys);
+
+        return factory.getObject();
+    }
+
+    @Bean
+    public ItemWriter<Customer3> jdbcPagingItemWriter() {
+        return items -> {
+            for(Customer3 item : items) {
+                System.out.println("items = " + item);
+            }
+        };
+    }
+
+
+    /**
+     * jpa 기반 cursor 배치 처리
+     */
     @Bean
     public Job jpaCursorJob() {
         return jobBuilderFactory.get("jpaCursorJob")
@@ -105,6 +177,10 @@ public class DBJobConfiguration {
             }
         };
     }
+
+    /**
+     * jdbc 기반 cursor 배치처리
+     */
 
     @Bean
     public Job jdbcCursorJob() {
