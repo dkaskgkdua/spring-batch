@@ -92,7 +92,7 @@ public class DBJobConfiguration {
         return new JpaCursorItemReaderBuilder<CustomerEntity>()
                 .name("jpaCursorItemReader")
                 .entityManagerFactory(entityManagerFactory)
-                .queryString("select c from Customer c where firstname like :firstname")
+                .queryString("select c from CustomerEntity c where firstname like :firstname")
                 .parameterValues(parameters)
                 .build();
     }
