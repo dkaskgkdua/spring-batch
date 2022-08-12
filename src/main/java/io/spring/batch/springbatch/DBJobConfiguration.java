@@ -13,6 +13,7 @@ import io.spring.batch.springbatch.processor.CustomItemProcessor;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
+import io.spring.batch.springbatch.service.CustomService;
 import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
 import lombok.RequiredArgsConstructor;
@@ -30,6 +31,7 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
+import org.springframework.batch.item.adapter.ItemReaderAdapter;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
@@ -72,6 +74,45 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * ItemReaderAdapter를 활용한 다른 Service, Dao 사용
+     */
+    @Bean
+    public Job readerAdapterJob() {
+        return jobBuilderFactory.get("readerAdapterJob")
+                .start(readerAdapterStep())
+                .build();
+    }
+
+    @Bean
+    public Step readerAdapterStep() {
+        return stepBuilderFactory.get("readerAdapterStep")
+                .<String, String>chunk(10)
+                .reader(readerAdapterItemReader())
+                .writer(readerAdapterItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<String> readerAdapterItemReader() {
+        ItemReaderAdapter<String> reader = new ItemReaderAdapter<>();
+        reader.setTargetObject(customService());
+        reader.setTargetMethod("customRead");
+        return reader;
+    }
+
+    @Bean
+    public Object customService() {
+        return new CustomService<String>();
+    }
+
+    @Bean
+    public ItemWriter<String> readerAdapterItemWriter() {
+        return items -> {
+            System.out.println("items = " + items);
+        };
+    }
 
     /**
      * jpa 기반 paging 배치 처리
