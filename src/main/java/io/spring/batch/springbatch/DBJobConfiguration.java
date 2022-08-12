@@ -4,6 +4,7 @@ import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.Customer2;
 import io.spring.batch.springbatch.dto.Customer3;
 import io.spring.batch.springbatch.dto.Customer4;
+import io.spring.batch.springbatch.dto.CustomerEntity;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
@@ -30,6 +31,7 @@ import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
+import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
@@ -48,6 +50,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.oxm.xstream.XStreamMarshaller;
 
+import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
 import java.util.*;
 
@@ -62,7 +65,46 @@ public class DBJobConfiguration {
     private final CustomTasklet4 customTasklet4;
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
+    private final EntityManagerFactory entityManagerFactory;
 
+    @Bean
+    public Job jpaCursorJob() {
+        return jobBuilderFactory.get("jpaCursorJob")
+                .incrementer(new RunIdIncrementer())
+                .start(jpaCursorStep())
+                .build();
+    }
+
+    @Bean
+    public Step jpaCursorStep() {
+        return stepBuilderFactory.get("jpaCursorStep")
+                .<CustomerEntity,CustomerEntity>chunk(3)
+                .reader(jpaCursorItemReader())
+                .writer(jpaCursorItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<CustomerEntity> jpaCursorItemReader() {
+        Map<String, Object> parameters = new HashMap<>();
+        parameters.put("firstname", "mj%");
+
+        return new JpaCursorItemReaderBuilder<CustomerEntity>()
+                .name("jpaCursorItemReader")
+                .entityManagerFactory(entityManagerFactory)
+                .queryString("select c from Customer c where firstname like :firstname")
+                .parameterValues(parameters)
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<CustomerEntity> jpaCursorItemWriter() {
+        return items -> {
+            for(CustomerEntity item : items) {
+                System.out.println("items = " + item);
+            }
+        };
+    }
 
     @Bean
     public Job jdbcCursorJob() {
