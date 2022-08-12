@@ -35,6 +35,7 @@ import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
 import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
+import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
@@ -71,6 +72,36 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * jpa 기반 paging 배치 처리
+     */
+    @Bean
+    public Job jpaPagingJob() throws Exception{
+        return jobBuilderFactory.get("jpaPagingJob")
+                .start(jpaPagingStep())
+                .build();
+    }
+
+    @Bean
+    public Step jpaPagingStep() throws Exception {
+        return stepBuilderFactory.get("jpaPagingStep")
+                .<CustomerEntity, CustomerEntity>chunk(10)
+                .reader(jpaPagingItemReader())
+                .writer(jpaCursorItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<? extends CustomerEntity> jpaPagingItemReader() {
+        return new JpaPagingItemReaderBuilder<CustomerEntity>()
+                .name("jpaPagingItemReader")
+                .entityManagerFactory(entityManagerFactory)
+                .pageSize(10)
+                .queryString("select c from customer c join fetch c.address")
+                .build();
+    }
+
 
     /**
      * jdbc 기반 paging 배치 처리
