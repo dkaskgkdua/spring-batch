@@ -46,7 +46,9 @@ import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
 import org.springframework.batch.item.file.transform.Range;
+import org.springframework.batch.item.json.JacksonJsonObjectMarshaller;
 import org.springframework.batch.item.json.JacksonJsonObjectReader;
+import org.springframework.batch.item.json.builder.JsonFileItemWriterBuilder;
 import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.item.xml.StaxEventItemReader;
@@ -78,6 +80,36 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * Json 파일 ItemWriter
+     */
+    @Bean
+    public Job jsonFileItemWriterJob() throws Exception {
+        return jobBuilderFactory.get("jsonFileItemWriterJob")
+                .incrementer(new RunIdIncrementer())
+                .start(jsonFileItemWriterStep())
+                .build();
+    }
+
+    @Bean
+    public Step jsonFileItemWriterStep() throws Exception {
+        return stepBuilderFactory.get("jsonFileItemWriterStep")
+                .<Customer3, Customer3>chunk(10)
+                .reader(jdbcPagingItemReader())
+                .writer(jsonFileItemWriter())
+                .build();
+
+    }
+
+    @Bean
+    public ItemWriter<? super Customer3> jsonFileItemWriter() {
+        return new JsonFileItemWriterBuilder<Customer3>()
+                .name("jsonFileItemWriter")
+                .jsonObjectMarshaller(new JacksonJsonObjectMarshaller<>())
+                .resource(new FileSystemResource("C:\\Users\\dkask\\IdeaProjects\\spring-batch\\src\\main\\resources\\json\\customerJson.json"))
+                .build();
+    }
 
     /**
      * XML StaxEventItemWriter
