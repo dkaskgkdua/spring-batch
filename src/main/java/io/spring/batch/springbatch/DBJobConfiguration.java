@@ -41,6 +41,7 @@ import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilde
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
+import org.springframework.batch.item.file.builder.FlatFileItemWriterBuilder;
 import org.springframework.batch.item.file.mapping.BeanWrapperFieldSetMapper;
 import org.springframework.batch.item.file.mapping.DefaultLineMapper;
 import org.springframework.batch.item.file.transform.DelimitedLineTokenizer;
@@ -55,6 +56,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.oxm.xstream.XStreamMarshaller;
 
@@ -74,6 +76,56 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+
+    /**
+     * FlatFileItemWriter을 활용한 파일 쓰기
+     */
+    @Bean
+    public Job flatFileItemWriterJob() throws Exception{
+        return jobBuilderFactory.get("flatFileItemWriterJob")
+                .incrementer(new RunIdIncrementer())
+                .start(flatFileItemWriterStep())
+                .build();
+    }
+
+    @Bean
+    public Step flatFileItemWriterStep() throws Exception {
+        return stepBuilderFactory.get("flatFileItemWriterStep")
+                .<Customer4, Customer4>chunk(10)
+                .reader(flatFileItemReader())
+                .writer(flatFileItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<? extends Customer4> flatFileItemReader() {
+        List<Customer4> customers = Arrays.asList(
+                new Customer4(1L, "honggil dong", 41),
+                new Customer4(2L, "honggil dong2", 34),
+                new Customer4(3L, "honggil dong3", 11)
+                );
+        ListItemReader<Customer4> reader = new ListItemReader<>(customers);
+
+        return reader;
+    }
+
+    @Bean
+    public ItemWriter<? super Customer4> flatFileItemWriter() {
+        // 절대경로에 지정 쓰기, '|' 로 구분
+        return new FlatFileItemWriterBuilder<>()
+                .name("flatFileItemWriter")
+                .resource(new FileSystemResource("C:\\Users\\dkask\\IdeaProjects\\spring-batch\\src\\main\\resources\\txt\\customer.txt"))
+                // 기존 파일이 있다면 내용을 추가하는 형태로
+                .append(true)
+                // 만약 읽은 데이터가 없다면 파일을 삭제할것인가
+                .shouldDeleteIfEmpty(true)
+                .delimited()
+                .delimiter("|")
+                .names(new String[]{"id","name","age"})
+                .build();
+    }
+
 
     /**
      * ItemReaderAdapter를 활용한 다른 Service, Dao 사용
