@@ -94,7 +94,7 @@ public class DBJobConfiguration {
         return stepBuilderFactory.get("flatFileItemWriterStep")
                 .<Customer4, Customer4>chunk(10)
                 .reader(flatFileItemReader())
-                .writer(flatFileItemWriter())
+                .writer(flatFileFormatItemWriter())
                 .build();
     }
 
@@ -108,6 +108,17 @@ public class DBJobConfiguration {
         ListItemReader<Customer4> reader = new ListItemReader<>(customers);
 
         return reader;
+    }
+
+    @Bean
+    public ItemWriter<? super Customer4> flatFileFormatItemWriter() {
+        return new FlatFileItemWriterBuilder<Customer4>()
+                .name("flatFileFormatItemWriter")
+                .resource(new FileSystemResource("C:\\Users\\dkask\\IdeaProjects\\spring-batch\\src\\main\\resources\\txt\\customer2.txt"))
+                .formatted()
+                .format("%-2d%-15s%-2d")
+                .names(new String[]{"id","name","age"})
+                .build();
     }
 
     @Bean
