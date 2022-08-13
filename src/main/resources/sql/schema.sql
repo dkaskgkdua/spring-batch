@@ -4,6 +4,12 @@ create table customer (
     lastName varchar(255),
     birthdate varchar(255)
 );
+create table customer2 (
+    id serial  primary key ,
+    firstName varchar(255),
+    lastName varchar(255),
+    birthdate varchar(255)
+);
 alter table customer alter column birthdate type date;
 alter table customer drop column birthdate;
 alter table customer add column birthdate date;
@@ -38,3 +44,6 @@ insert into customer values(default, 'mj27', 's27', now());
 insert into customer values(default, 'mj28', 's28', now());
 insert into customer values(default, 'mj29', 's29', now());
 insert into customer values(default, 'mj30', 's30', now());
+
+select *
+from customer2;

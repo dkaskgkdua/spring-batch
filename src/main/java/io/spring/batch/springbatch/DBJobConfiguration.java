@@ -34,10 +34,7 @@ import org.springframework.batch.item.*;
 import org.springframework.batch.item.adapter.ItemReaderAdapter;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
-import org.springframework.batch.item.database.builder.JdbcCursorItemReaderBuilder;
-import org.springframework.batch.item.database.builder.JdbcPagingItemReaderBuilder;
-import org.springframework.batch.item.database.builder.JpaCursorItemReaderBuilder;
-import org.springframework.batch.item.database.builder.JpaPagingItemReaderBuilder;
+import org.springframework.batch.item.database.builder.*;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
@@ -80,6 +77,36 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * jdbc writer
+     */
+    @Bean
+    public Job jdbcBatchItemWriterJob() throws Exception {
+        return jobBuilderFactory.get("jdbcBatchItemWriterJob")
+                .incrementer(new RunIdIncrementer())
+                .start(jdbcBatchItemWriterStep())
+                .build();
+    }
+
+    @Bean
+    public Step jdbcBatchItemWriterStep() throws Exception {
+        return stepBuilderFactory.get("jdbcBatchItemWriterStep")
+                .<Customer3, Customer3>chunk(10)
+                .reader(jdbcPagingItemReader())
+                .writer(jdbcBatchItemWriter())
+                .build();
+
+    }
+
+    @Bean
+    public ItemWriter<? super Customer3> jdbcBatchItemWriter() {
+        return new JdbcBatchItemWriterBuilder<Customer3>()
+                .dataSource(dataSource)
+                .sql("insert into customer2 values (:id, :firstname, :lastname, :birthdate)")
+                .beanMapped()
+                .build();
+    }
 
     /**
      * Json 파일 ItemWriter
