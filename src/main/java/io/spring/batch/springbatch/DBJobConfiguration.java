@@ -50,7 +50,9 @@ import org.springframework.batch.item.json.JacksonJsonObjectReader;
 import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.item.xml.StaxEventItemReader;
+import org.springframework.batch.item.xml.StaxEventItemWriter;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
+import org.springframework.batch.item.xml.builder.StaxEventItemWriterBuilder;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -76,6 +78,36 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * XML StaxEventItemWriter
+     */
+    @Bean
+    public Job XMLStaxEventItemWriterJob() throws Exception{
+        return jobBuilderFactory.get("XMLStaxEventItemWriterJob")
+                .incrementer(new RunIdIncrementer())
+                .start(XMLStaxEventItemWriterStep())
+                .build();
+    }
+
+    @Bean
+    public Step XMLStaxEventItemWriterStep() throws Exception {
+        return stepBuilderFactory.get("XMLStaxEventItemWriterStep")
+                .<Customer3, Customer3>chunk(10)
+                .reader(jdbcPagingItemReader())
+                .writer(XMLStaxEventItemWriter())
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<? super Customer3> XMLStaxEventItemWriter() {
+        return new StaxEventItemWriterBuilder<Customer3>()
+                .name("XMLStaxEventItemWriter")
+                .marshaller(itemMarshaller())
+                .resource(new FileSystemResource("C:\\Users\\dkask\\IdeaProjects\\spring-batch\\src\\main\\resources\\xml\\customerXML.xml"))
+                .rootTagName("customer")
+                .build();
+    }
 
 
     /**
