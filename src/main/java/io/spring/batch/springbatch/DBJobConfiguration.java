@@ -1,15 +1,13 @@
 package io.spring.batch.springbatch;
 
+import io.spring.batch.springbatch.classifier.ProcessorClassifier;
 import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.*;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
 import io.spring.batch.springbatch.linstener.PassCheckingListener;
-import io.spring.batch.springbatch.processor.CompositeProcessor1;
-import io.spring.batch.springbatch.processor.CompositeProcessor2;
-import io.spring.batch.springbatch.processor.CustomItemProcessor;
-import io.spring.batch.springbatch.processor.jpaItemProcessor;
+import io.spring.batch.springbatch.processor.*;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
@@ -48,6 +46,7 @@ import org.springframework.batch.item.json.JacksonJsonObjectMarshaller;
 import org.springframework.batch.item.json.JacksonJsonObjectReader;
 import org.springframework.batch.item.json.builder.JsonFileItemWriterBuilder;
 import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
+import org.springframework.batch.item.support.ClassifierCompositeItemProcessor;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.item.support.builder.CompositeItemProcessorBuilder;
 import org.springframework.batch.item.xml.StaxEventItemReader;
@@ -79,6 +78,51 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * Classfier을 이용한 processor 분기처리
+     */
+    @Bean
+    public Job classfierProcessorJob() throws Exception {
+        return jobBuilderFactory.get("ClassfierProcessorJob")
+                .incrementer(new RunIdIncrementer())
+                .start(classfierProcessorStep())
+                .build();
+    }
+
+    @Bean
+    public Step classfierProcessorStep() throws Exception {
+        return stepBuilderFactory.get("classfierProcessorStep")
+                .<ProcessorInfo, ProcessorInfo>chunk(10)
+                .reader(new ItemReader<ProcessorInfo>() {
+                    int i = 0;
+                    @Override
+                    public ProcessorInfo read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        ProcessorInfo processorInfo = ProcessorInfo.builder().id(i).build();
+
+                        return i > 3 ? null : processorInfo;
+                    }
+                })
+                .processor(classfierProcessor())
+                .writer(items -> System.out.println("items = " + items))
+                .build();
+    }
+
+    @Bean
+    public ItemProcessor<? super ProcessorInfo, ? extends ProcessorInfo> classfierProcessor() {
+        ClassifierCompositeItemProcessor<ProcessorInfo, ProcessorInfo> processor = new ClassifierCompositeItemProcessor<>();
+
+        ProcessorClassifier<ProcessorInfo, ItemProcessor<?, ? extends ProcessorInfo>> classifier = new ProcessorClassifier<>();
+        Map<Integer, ItemProcessor<ProcessorInfo, ProcessorInfo>> processorMap = new HashMap<>();
+        processorMap.put(1, new ClassifierItemProcessor1());
+        processorMap.put(2, new ClassifierItemProcessor2());
+        processorMap.put(3, new ClassifierItemProcessor3());
+        classifier.setProcessorMap(processorMap);
+        processor.setClassifier(classifier);
+
+        return processor;
+    }
 
     /**
      * 프로세스를 2개 이상 합치는 경우
