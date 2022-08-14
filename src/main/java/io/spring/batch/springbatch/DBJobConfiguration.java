@@ -6,6 +6,8 @@ import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
 import io.spring.batch.springbatch.linstener.PassCheckingListener;
+import io.spring.batch.springbatch.processor.CompositeProcessor1;
+import io.spring.batch.springbatch.processor.CompositeProcessor2;
 import io.spring.batch.springbatch.processor.CustomItemProcessor;
 import io.spring.batch.springbatch.processor.jpaItemProcessor;
 import io.spring.batch.springbatch.reader.CustomItemReader;
@@ -47,6 +49,7 @@ import org.springframework.batch.item.json.JacksonJsonObjectReader;
 import org.springframework.batch.item.json.builder.JsonFileItemWriterBuilder;
 import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
 import org.springframework.batch.item.support.ListItemReader;
+import org.springframework.batch.item.support.builder.CompositeItemProcessorBuilder;
 import org.springframework.batch.item.xml.StaxEventItemReader;
 import org.springframework.batch.item.xml.StaxEventItemWriter;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
@@ -76,6 +79,46 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * 프로세스를 2개 이상 합치는 경우
+     */
+    @Bean
+    public Job compositeItemProcessorJob() throws Exception{
+        return jobBuilderFactory.get("compositeItemProcessorJob")
+                .incrementer(new RunIdIncrementer())
+                .start(compositeItemProcessorStep())
+                .build();
+    }
+
+    @Bean
+    public Step compositeItemProcessorStep() throws Exception {
+        return stepBuilderFactory.get("compositeItemProcessorStep")
+                .<String, String>chunk(10)
+                .reader(new ItemReader<String>() {
+                    int i = 0;
+                    @Override
+                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        System.out.println(i);
+                        return i > 10 ? null : "item" + i;
+                    }
+                })
+                .processor(compositeItemProcessor())
+                .writer(itemWriterAdapter())
+                .build();
+    }
+
+    @Bean
+    public ItemProcessor<String, String> compositeItemProcessor() {
+        List itemProcessor = new ArrayList();
+        itemProcessor.add(new CompositeProcessor1());
+        itemProcessor.add(new CompositeProcessor2());
+
+        return new CompositeItemProcessorBuilder<String, String>()
+                .delegates(itemProcessor)
+                .build();
+    }
 
     /**
      * ItemWriterAdapter
