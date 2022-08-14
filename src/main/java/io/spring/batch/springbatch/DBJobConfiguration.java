@@ -3,6 +3,7 @@ package io.spring.batch.springbatch;
 import io.spring.batch.springbatch.classifier.ProcessorClassifier;
 import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.*;
+import io.spring.batch.springbatch.exception.RetryableException;
 import io.spring.batch.springbatch.exception.SkippableException;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
@@ -75,6 +76,10 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.oxm.xstream.XStreamMarshaller;
+import org.springframework.retry.RetryPolicy;
+import org.springframework.retry.backoff.FixedBackOffPolicy;
+import org.springframework.retry.policy.SimpleRetryPolicy;
+import org.springframework.retry.support.RetryTemplate;
 
 import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
@@ -92,6 +97,111 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * retry 적용
+     */
+    @Bean
+    public Job retryJob2() throws Exception {
+        return jobBuilderFactory.get("retryJob2")
+                .incrementer(new RunIdIncrementer())
+                .start(retryStep2())
+                .build();
+    }
+
+    @Bean
+    public Step retryStep2() throws Exception {
+        return stepBuilderFactory.get("retryStep2")
+                .<String, ItemCustomer>chunk(5)
+                .reader(retryItemReader())
+                .processor(retryItemProcessor2())
+                .writer(items -> System.out.println("items = " + items))
+                .faultTolerant()
+//                .skip(RetryableException.class)
+//                .skipLimit(2)
+//                .retryPolicy(retryPolicy())
+//                .retry(RetryableException.class)
+//                .retryLimit(2)
+                .build();
+    }
+
+    @Bean
+    public ItemProcessor<? super String, ItemCustomer> retryItemProcessor2() {
+        return new RetryItemProcessor2();
+    }
+
+    @Bean
+    public RetryTemplate retryTemplate() {
+        Map<Class<? extends Throwable>, Boolean> exceptionClass = new HashMap<>();
+        exceptionClass.put(RetryableException.class, true);
+
+        // 재시작 전 시간 간격 주기
+        FixedBackOffPolicy backOffPolicy = new FixedBackOffPolicy();
+        backOffPolicy.setBackOffPeriod(2000);
+
+        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy(2, exceptionClass);
+        RetryTemplate retryTemplate = new RetryTemplate();
+        retryTemplate.setRetryPolicy(simpleRetryPolicy);
+//        retryTemplate.setBackOffPolicy(backOffPolicy);
+
+        return retryTemplate;
+    }
+
+    /**
+     * retry 적용
+     */
+    @Bean
+    public Job retryJob() throws Exception {
+        return jobBuilderFactory.get("retryJob")
+                .incrementer(new RunIdIncrementer())
+                .start(retryStep())
+                .build();
+    }
+
+    @Bean
+    public Step retryStep() throws Exception {
+        return stepBuilderFactory.get("retryStep")
+                .<String, String>chunk(5)
+                .reader(retryItemReader())
+                .processor(retryItemProcessor())
+                .writer(items -> System.out.println("items = " + items))
+                .faultTolerant()
+                .skip(RetryableException.class)
+                .skipLimit(2)
+                .retryPolicy(retryPolicy())
+//                .retry(RetryableException.class)
+//                .retryLimit(2)
+                .build();
+    }
+
+    @Bean
+    public RetryPolicy retryPolicy() {
+        Map<Class<? extends Throwable>, Boolean> exceptionClass = new HashMap<>();
+        exceptionClass.put(RetryableException.class, true);
+
+        SimpleRetryPolicy simpleRetryPolicy = new SimpleRetryPolicy(2, exceptionClass);
+
+        return simpleRetryPolicy;
+    }
+
+    @Bean
+    public ItemProcessor<? super String, String> retryItemProcessor() {
+        return new RetryItemProcessor();
+
+    }
+
+
+    @Bean
+    public ListItemReader<String> retryItemReader() {
+        List<String> items = new ArrayList<>();
+        for(int i = 0; i < 30; i++) {
+            items.add(String.valueOf(i));
+        }
+        return new ListItemReader<>(items);
+
+    }
+
+
 
     /**
      * skip 기본 예제 2
