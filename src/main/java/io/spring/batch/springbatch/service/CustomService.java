@@ -5,4 +5,9 @@ public class CustomService<T> {
     public T customRead() {
         return (T)("item" + cnt++);
     }
+
+    public void customWrite(T item) {
+        System.out.println("item = " + item);
+
+    }
 }

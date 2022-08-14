@@ -1,15 +1,13 @@
 package io.spring.batch.springbatch;
 
 import io.spring.batch.springbatch.decider.CustomDecider;
-import io.spring.batch.springbatch.dto.Customer2;
-import io.spring.batch.springbatch.dto.Customer3;
-import io.spring.batch.springbatch.dto.Customer4;
-import io.spring.batch.springbatch.dto.CustomerEntity;
+import io.spring.batch.springbatch.dto.*;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
 import io.spring.batch.springbatch.linstener.PassCheckingListener;
 import io.spring.batch.springbatch.processor.CustomItemProcessor;
+import io.spring.batch.springbatch.processor.jpaItemProcessor;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
@@ -32,6 +30,7 @@ import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.adapter.ItemReaderAdapter;
+import org.springframework.batch.item.adapter.ItemWriterAdapter;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.*;
@@ -77,6 +76,79 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * ItemWriterAdapter
+     */
+    @Bean
+    public Job itemWriterAdapterJob() throws Exception{
+        return jobBuilderFactory.get("itemWriterAdapterJob")
+                .incrementer(new RunIdIncrementer())
+                .start(itemWriterAdapterStep())
+                .build();
+    }
+
+    @Bean
+    public Step itemWriterAdapterStep() throws Exception {
+        System.out.println("itemWriterAdapterStep exc");
+        return stepBuilderFactory.get("itemWriterAdapterStep")
+                .<String, String>chunk(10)
+                .reader(new ItemReader<String>() {
+                    int i = 0;
+                    @Override
+                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        System.out.println(i);
+                        return i > 10 ? null : "item" + i;
+                    }
+                })
+                .writer(itemWriterAdapter())
+                .build();
+    }
+
+    @Bean
+    public ItemWriter<? super String> itemWriterAdapter() {
+        ItemWriterAdapter<String> writer = new ItemWriterAdapter<>();
+        writer.setTargetObject(customService());
+        writer.setTargetMethod("customWrite");
+
+        return writer;
+    }
+
+    /**
+     * jpa writer
+     */
+    @Bean
+    public Job jpaItemWriterJob() throws Exception {
+        return jobBuilderFactory.get("jpaItemWriter")
+                .incrementer(new RunIdIncrementer())
+                .start(jpaItemWriterStep())
+                .build();
+    }
+
+    @Bean
+    public Step jpaItemWriterStep() throws Exception {
+        return stepBuilderFactory.get("jpaItemWriterStep")
+                .<CustomerEntity, CustomerEntity2>chunk(10)
+                .reader(jpaCursorItemReader())
+                .processor(jpaItemProcessor())
+                .writer(jpaItemWriter())
+                .build();
+
+    }
+
+    @Bean
+    public ItemProcessor<? super CustomerEntity, ? extends CustomerEntity2> jpaItemProcessor() {
+        return new jpaItemProcessor();
+    }
+
+    @Bean
+    public ItemWriter<? super CustomerEntity2> jpaItemWriter() {
+        return new JpaItemWriterBuilder<CustomerEntity2>()
+                .usePersist(true)
+                .entityManagerFactory(entityManagerFactory)
+                .build();
+    }
 
     /**
      * jdbc writer
@@ -293,7 +365,7 @@ public class DBJobConfiguration {
                 .name("jpaPagingItemReader")
                 .entityManagerFactory(entityManagerFactory)
                 .pageSize(10)
-                .queryString("select c from customer c join fetch c.address")
+                .queryString("select c from CustomerEntity c join fetch c.address")
                 .build();
     }
 
@@ -994,7 +1066,7 @@ public class DBJobConfiguration {
                 .startLimit(3)
                 .build();
     }
-
+//
     @Bean
     public Step chunkStep() {
         return stepBuilderFactory.get("chunkStep")
@@ -1023,8 +1095,8 @@ public class DBJobConfiguration {
                 })
                 .build();
     }
-
-    // 멀티스레드 작업을 위한 파티셔너 스텝
+//
+//    // 멀티스레드 작업을 위한 파티셔너 스텝
     @Bean
     public Step partitionerStep() {
         return stepBuilderFactory.get("partitionerStep")

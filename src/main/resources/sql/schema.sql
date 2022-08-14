@@ -47,3 +47,9 @@ insert into customer values(default, 'mj30', 's30', now());
 
 select *
 from customer2;
+
+select *
+from address;
+
+select *
+from customer;
