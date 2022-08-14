@@ -3,6 +3,7 @@ package io.spring.batch.springbatch;
 import io.spring.batch.springbatch.classifier.ProcessorClassifier;
 import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.*;
+import io.spring.batch.springbatch.exception.SkippableException;
 import io.spring.batch.springbatch.linstener.CustomStepListener;
 import io.spring.batch.springbatch.linstener.JobListener;
 import io.spring.batch.springbatch.linstener.JobRepositoryListener;
@@ -14,6 +15,7 @@ import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
 import io.spring.batch.springbatch.service.CustomService;
 import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
+import io.spring.batch.springbatch.writer.SkipItemWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -27,6 +29,10 @@ import org.springframework.batch.core.job.flow.JobExecutionDecider;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
+import org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy;
+import org.springframework.batch.core.step.skip.LimitCheckingItemSkipPolicy;
+import org.springframework.batch.core.step.skip.NeverSkipItemSkipPolicy;
+import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.adapter.ItemReaderAdapter;
@@ -53,7 +59,15 @@ import org.springframework.batch.item.xml.StaxEventItemReader;
 import org.springframework.batch.item.xml.StaxEventItemWriter;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
 import org.springframework.batch.item.xml.builder.StaxEventItemWriterBuilder;
+import org.springframework.batch.repeat.CompletionPolicy;
+import org.springframework.batch.repeat.RepeatCallback;
+import org.springframework.batch.repeat.RepeatContext;
 import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.batch.repeat.exception.SimpleLimitExceptionHandler;
+import org.springframework.batch.repeat.policy.CompositeCompletionPolicy;
+import org.springframework.batch.repeat.policy.SimpleCompletionPolicy;
+import org.springframework.batch.repeat.policy.TimeoutTerminationPolicy;
+import org.springframework.batch.repeat.support.RepeatTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -78,6 +92,174 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * skip 기본 예제 2
+     * 커스텀 exception 적용
+     */
+    @Bean
+    public Job skipJob() throws Exception {
+        return jobBuilderFactory.get("skipJob")
+                .incrementer(new RunIdIncrementer())
+                .start(skipStep())
+                .build();
+    }
+
+    @Bean
+    public Step skipStep() {
+        return stepBuilderFactory.get("skipStep")
+                .<String, String>chunk(5)
+                .reader(new ItemReader<String>() {
+                    int i = 0;
+                    @Override
+                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        if(i == 3) {
+                            throw new SkippableException("this exception is skipped");
+                        }
+                        System.out.println("itemReader = " + i);
+                        return i > 20 ? null : String.valueOf(i);
+                    }
+                })
+                .processor(skipProcessor())
+                .writer(skipItemWriter())
+                .faultTolerant()
+//                .skip(SkippableException.class)
+//                .skipLimit(2)
+                // 위의 스킵옵션을 정책으로 반환
+                .skipPolicy(limitCheckingItemSkipPolicy())
+//                 어떤 정책이든 스킵
+//                .skipPolicy(new AlwaysSkipItemSkipPolicy())
+                // 어떤 에러든 스킵 안함
+//                .skipPolicy(new NeverSkipItemSkipPolicy())
+                .build();
+    }
+
+    @Bean
+    public SkipPolicy limitCheckingItemSkipPolicy() {
+        Map<Class<? extends Throwable>, Boolean> exceptionClass= new HashMap<>();
+        exceptionClass.put(SkippableException.class, true);
+
+        LimitCheckingItemSkipPolicy limitCheckingItemSkipPolicy = new LimitCheckingItemSkipPolicy(3, exceptionClass);
+
+        return limitCheckingItemSkipPolicy;
+    }
+
+    @Bean
+    public ItemWriter<? super String> skipItemWriter() {
+        return new SkipItemWriter();
+    }
+
+    @Bean
+    public ItemProcessor<? super String, String> skipProcessor() {
+        return new SkipItemProcessor();
+    }
+
+
+
+    /**
+     * skip 기본 예제
+     */
+    @Bean
+    public Job faultTolerantJob() throws Exception {
+        return jobBuilderFactory.get("faultTolerantJob")
+                .incrementer(new RunIdIncrementer())
+                .start(faultTolerantStep())
+                .build();
+    }
+
+    @Bean
+    public Step faultTolerantStep() {
+        return stepBuilderFactory.get("faultTolerantStep")
+                .<String, String>chunk(5)
+                .reader(new ItemReader<String>() {
+                    int i = 0;
+                    @Override
+                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        if(i == 1) {
+                            throw new IllegalArgumentException("this exception is skipped");
+                        }
+                        return i > 3 ? null : "item" + i;
+                    }
+                })
+                .processor(new ItemProcessor<String, String>() {
+                    @Override
+                    public String process(String s) throws Exception {
+                        throw new IllegalStateException("this exception is retried");
+                    }
+                })
+                .writer(items -> System.out.println("items = " + items))
+                .faultTolerant()
+                .skip(IllegalArgumentException.class)
+                .skipLimit(2)
+                .retry(IllegalStateException.class)
+                .retryLimit(2)
+                .build();
+    }
+
+    /**
+     * Repeat 활용
+     */
+    @Bean
+    public Job repeatJob() throws Exception {
+        return jobBuilderFactory.get("repeatJob")
+                .incrementer(new RunIdIncrementer())
+                .start(repeatStep())
+                .build();
+    }
+
+    @Bean
+    public Step repeatStep() throws Exception {
+        return stepBuilderFactory.get("repeatStep")
+                .<String, String>chunk(5)
+                .reader(new ItemReader<String>() {
+                    int i = 0;
+                    @Override
+                    public String read() throws Exception, UnexpectedInputException, ParseException, NonTransientResourceException {
+                        i++;
+                        return i > 3 ? null : "item" + i;
+                    }
+                })
+                .processor(new ItemProcessor<String, String>() {
+                    RepeatTemplate repeatTemplate = new RepeatTemplate();
+
+                    @Override
+                    public String process(String s) throws Exception {
+                        // 3번의 반복이 일어나면 종료(read한게 3개면 3x3 = 9번 실행)
+//                        repeatTemplate.setCompletionPolicy(new SimpleCompletionPolicy(3));
+                        // 시간으로 지정(3초)
+//                        repeatTemplate.setCompletionPolicy(new TimeoutTerminationPolicy(3000));
+
+                        // 여러개의 policy(or 조건임 | 하나만이라도 참이면 빠져나옴)
+                        CompositeCompletionPolicy completionPolicy = new CompositeCompletionPolicy();
+                        CompletionPolicy[] completionPolicies = new CompletionPolicy[]{new SimpleCompletionPolicy(3), new TimeoutTerminationPolicy(3000)};
+                        completionPolicy.setPolicies(completionPolicies);
+                        repeatTemplate.setCompletionPolicy(completionPolicy);
+
+                        // exception handler 세팅, 아래는 3번까지는 넘어감
+                        repeatTemplate.setExceptionHandler(simpleLimitExceptionHandler());
+
+                        repeatTemplate.iterate(new RepeatCallback() {
+                            @Override
+                            public RepeatStatus doInIteration(RepeatContext repeatContext) throws Exception {
+                                System.out.println("repeatTemplate is testing...");
+//                                throw new RuntimeException("Error occurred");
+                                return RepeatStatus.CONTINUABLE;
+                            }
+                        });
+
+                        return s;
+                    }
+                })
+                .writer(items -> System.out.println("items = " + items))
+                .build();
+    }
+
+    @Bean
+    public SimpleLimitExceptionHandler simpleLimitExceptionHandler() {
+        return new SimpleLimitExceptionHandler(3);
+    }
 
     /**
      * Classfier을 이용한 processor 분기처리
