@@ -6,6 +6,7 @@ import io.spring.batch.springbatch.dto.*;
 import io.spring.batch.springbatch.exception.RetryableException;
 import io.spring.batch.springbatch.exception.SkippableException;
 import io.spring.batch.springbatch.linstener.*;
+import io.spring.batch.springbatch.partitioner.ColumnRangePartitioner;
 import io.spring.batch.springbatch.processor.*;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
@@ -27,6 +28,7 @@ import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
 import org.springframework.batch.core.job.flow.JobExecutionDecider;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
 import org.springframework.batch.core.step.skip.LimitCheckingItemSkipPolicy;
@@ -38,10 +40,7 @@ import org.springframework.batch.integration.async.AsyncItemWriter;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.adapter.ItemReaderAdapter;
 import org.springframework.batch.item.adapter.ItemWriterAdapter;
-import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
-import org.springframework.batch.item.database.JdbcBatchItemWriter;
-import org.springframework.batch.item.database.Order;
-import org.springframework.batch.item.database.PagingQueryProvider;
+import org.springframework.batch.item.database.*;
 import org.springframework.batch.item.database.builder.*;
 import org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean;
 import org.springframework.batch.item.file.FlatFileItemReader;
@@ -101,6 +100,90 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * partitioning
+     */
+    @Bean
+    public Job partitioningJob() throws Exception {
+        return jobBuilderFactory.get("partitioningJob")
+                .incrementer(new RunIdIncrementer())
+                .start(partitioningMasterStep())
+                .build();
+    }
+
+    @Bean
+    public Step partitioningMasterStep() throws Exception{
+        return stepBuilderFactory.get("partitioningStep")
+                .partitioner(slaveStep1().getName(), partitioner())
+                .step(slaveStep1())
+                .gridSize(4)
+                .taskExecutor(new SimpleAsyncTaskExecutor())
+                .build();
+
+    }
+
+    @Bean
+    public Step slaveStep1() throws Exception {
+        return stepBuilderFactory.get("slaveStep1")
+                .<Customer3, Customer3>chunk(100)
+                .reader(partitionerItemReader(null, null))
+                .writer(partitioningItemWrtier())
+                .build();
+    }
+
+    @Bean
+    public Partitioner partitioner() {
+        ColumnRangePartitioner columnRangePartitioner = new ColumnRangePartitioner();
+        columnRangePartitioner.setColumn("id");
+        columnRangePartitioner.setDataSource(dataSource);
+        columnRangePartitioner.setTable("customer");
+
+        return columnRangePartitioner;
+    }
+
+    @Bean
+    @StepScope
+    public JdbcPagingItemReader<Customer3> partitionerItemReader(
+            @Value("#{stepExecutionContext['minValue']}") Long minValue,
+            @Value("#{stepExecutionContext['maxValue']}") Long maxValue
+
+    ) throws Exception {
+        System.out.println("reading : " + minValue + " | " + maxValue);
+        JdbcPagingItemReader<Customer3> reader = new JdbcPagingItemReader<>();
+
+        reader.setDataSource(dataSource);
+        reader.setFetchSize(500);
+        reader.setRowMapper(new CustomerRowMapper());
+
+        SqlPagingQueryProviderFactoryBean factory = new SqlPagingQueryProviderFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setSelectClause("id,firstname,lastname,birthdate");
+        factory.setFromClause("from customer");
+        factory.setWhereClause("where id >= " + minValue + " and id <= " + maxValue);
+
+        Map<String, Order> sortKeys = new HashMap<>(1);
+        sortKeys.put("id", Order.ASCENDING);
+
+        factory.setSortKeys(sortKeys);
+        reader.setQueryProvider(factory.getObject());
+
+        return reader;
+    }
+
+
+
+    @Bean
+    @StepScope
+    public JdbcBatchItemWriter<Customer3> partitioningItemWrtier() {
+        JdbcBatchItemWriter<Customer3> itemWriter = new JdbcBatchItemWriter<>();
+        itemWriter.setDataSource(dataSource);
+        itemWriter.setSql("insert into customer2 values (:id, :firstname, :lastname, :birthdate)");
+        itemWriter.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>());
+        itemWriter.afterPropertiesSet();
+
+        return itemWriter;
+    }
 
 
     /**
