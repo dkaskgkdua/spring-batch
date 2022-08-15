@@ -81,6 +81,12 @@
             <version>2.3.0</version>
         </dependency>
 
+        <!--  async 작업을 위한      -->
+        <dependency>
+            <groupId>org.springframework.batch</groupId>
+            <artifactId>spring-batch-integration</artifactId>
+        </dependency>
+
     </dependencies>
 
     <build>

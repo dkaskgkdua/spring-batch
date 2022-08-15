@@ -5,14 +5,12 @@ import io.spring.batch.springbatch.decider.CustomDecider;
 import io.spring.batch.springbatch.dto.*;
 import io.spring.batch.springbatch.exception.RetryableException;
 import io.spring.batch.springbatch.exception.SkippableException;
-import io.spring.batch.springbatch.linstener.CustomStepListener;
-import io.spring.batch.springbatch.linstener.JobListener;
-import io.spring.batch.springbatch.linstener.JobRepositoryListener;
-import io.spring.batch.springbatch.linstener.PassCheckingListener;
+import io.spring.batch.springbatch.linstener.*;
 import io.spring.batch.springbatch.processor.*;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
+import io.spring.batch.springbatch.reader.mapper.CustomerRowMapper;
 import io.spring.batch.springbatch.service.CustomService;
 import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
@@ -35,9 +33,13 @@ import org.springframework.batch.core.step.skip.LimitCheckingItemSkipPolicy;
 import org.springframework.batch.core.step.skip.NeverSkipItemSkipPolicy;
 import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.core.step.tasklet.Tasklet;
+import org.springframework.batch.integration.async.AsyncItemProcessor;
+import org.springframework.batch.integration.async.AsyncItemWriter;
 import org.springframework.batch.item.*;
 import org.springframework.batch.item.adapter.ItemReaderAdapter;
 import org.springframework.batch.item.adapter.ItemWriterAdapter;
+import org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider;
+import org.springframework.batch.item.database.JdbcBatchItemWriter;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.builder.*;
@@ -74,12 +76,15 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.oxm.xstream.XStreamMarshaller;
 import org.springframework.retry.RetryPolicy;
 import org.springframework.retry.backoff.FixedBackOffPolicy;
 import org.springframework.retry.policy.SimpleRetryPolicy;
 import org.springframework.retry.support.RetryTemplate;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
@@ -97,6 +102,172 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * multi-threaded
+     * 사이즈 100개씩 단위
+     * 각 스레드마다 100개를 처리하는 것임
+     * 스레드가 4개라면 400개 read, 400 process 이런식으로 처리
+     * - jdbcPagingReader가 Thread safe 보장함
+     */
+    @Bean
+    public Job multiThreadedJob() throws Exception {
+        return jobBuilderFactory.get("multiThreadedJob")
+                .incrementer(new RunIdIncrementer())
+                .start(multiThreadedStep())
+                .listener(new StopWatchJobListener())
+                .build();
+    }
+
+    @Bean
+    public Step multiThreadedStep() throws Exception {
+        return stepBuilderFactory.get("multiThreadedStep")
+                .<Customer3, Customer3>chunk(100)
+                .reader(multiThreadedStepReader())
+                .listener(new MultiThreadedReadListener())
+                .processor((ItemProcessor<Customer3, Customer3>) item -> item)
+                .listener(new MultiThreadedProcessListener())
+                .writer(unAsyncPagingItemWrtier())
+                .listener(new MultiThreadedWriterListener())
+                .taskExecutor(taskExecutor())
+                .build();
+    }
+
+    @Bean
+    public TaskExecutor taskExecutor() {
+        ThreadPoolTaskExecutor taskExecutor = new ThreadPoolTaskExecutor();
+        // 최대 쓰레드 개수 4 ~ 8
+        taskExecutor.setCorePoolSize(4);
+        taskExecutor.setMaxPoolSize(8);
+        taskExecutor.setThreadNamePrefix("async-thread");
+
+        return taskExecutor;
+    }
+
+    @Bean
+    public ItemReader<? extends Customer3> multiThreadedStepReader() throws Exception {
+//        Map<String, Object> parameters = new HashMap<>();
+//        parameters.put("firstname", "mj%");
+
+        return new JdbcPagingItemReaderBuilder<Customer3>()
+                .name("multiThreadedStepReader")
+                .pageSize(100)
+//                .fetchSize(300)
+                .dataSource(dataSource)
+                .rowMapper(new CustomerRowMapper())
+                .queryProvider(asyncWriterQueryProvider())
+//                .parameterValues(parameters)
+                .build();
+    }
+
+    /**
+     * AsyncItemProcessor
+     */
+    @Bean
+    public Job asyncItemProcessorJob() throws Exception{
+        return jobBuilderFactory.get("asyncItemProcessorJob")
+                .incrementer(new RunIdIncrementer())
+                .start(unAsyncItemProcessorStep())
+                .listener(new StopWatchJobListener())
+                .build();
+    }
+
+    // 동기식 Step
+    @Bean
+    public Step unAsyncItemProcessorStep() throws Exception {
+        return stepBuilderFactory.get("unAsyncItemProcessorStep")
+                .<Customer3, Customer3>chunk(100)
+                .reader(asyncPagingItemProcessorReader())
+                .processor(unAsyncPagingItemProcessor())
+                .writer(unAsyncPagingItemWrtier())
+                .build();
+    }
+
+    @Bean
+    public ItemProcessor<Customer3, Customer3> unAsyncPagingItemProcessor() throws InterruptedException {
+
+        return new ItemProcessor<Customer3, Customer3>() {
+            @Override
+            public Customer3 process(Customer3 item) throws Exception {
+                // 성능 비교를 위한 슬립
+                Thread.sleep(30);
+                return new Customer3(item.getId(), item.getFirstname().toUpperCase(),
+                        item.getLastname().toUpperCase(), item.getBirthdate());
+            }
+        };
+
+    }
+
+    private JdbcBatchItemWriter<Customer3> unAsyncPagingItemWrtier() {
+        JdbcBatchItemWriter<Customer3> itemWriter = new JdbcBatchItemWriter<>();
+        itemWriter.setDataSource(dataSource);
+        itemWriter.setSql("insert into customer2 values (:id, :firstname, :lastname, :birthdate)");
+        itemWriter.setItemSqlParameterSourceProvider(new BeanPropertyItemSqlParameterSourceProvider<>());
+        itemWriter.afterPropertiesSet();
+
+        return itemWriter;
+    }
+
+    // 비동기식 Step
+    @Bean
+    public Step asyncItemProcessorStep() throws Exception {
+        return stepBuilderFactory.get("asyncItemProcessorStep")
+                .<Customer3, Customer3>chunk(100)
+                .reader(asyncPagingItemProcessorReader())
+                .processor(asyncPagingItemProcessor())
+                .writer(asyncPagingItemWrtier())
+                .build();
+    }
+
+    private AsyncItemWriter asyncPagingItemWrtier() {
+        AsyncItemWriter<Customer3> asyncItemWriter = new AsyncItemWriter<>();
+        asyncItemWriter.setDelegate(unAsyncPagingItemWrtier());
+        return asyncItemWriter;
+    }
+
+    // 비동기만 처리해주고 실제 작업은 unAsyncPagingItemProcessor에 위임해줌
+    @Bean
+    public ItemProcessor asyncPagingItemProcessor() throws InterruptedException {
+        AsyncItemProcessor<Customer3, Customer3> asyncItemProcessor = new AsyncItemProcessor<>();
+        // 위임
+        asyncItemProcessor.setDelegate(unAsyncPagingItemProcessor());
+        asyncItemProcessor.setTaskExecutor(new SimpleAsyncTaskExecutor());
+
+        return asyncItemProcessor;
+    }
+
+
+    @Bean
+    public ItemReader<? extends Customer3> asyncPagingItemProcessorReader() throws Exception {
+//        Map<String, Object> parameters = new HashMap<>();
+//        parameters.put("firstname", "mj%");
+
+        return new JdbcPagingItemReaderBuilder<Customer3>()
+                .name("asyncPagingItemProcessorReader")
+//                .pageSize(10)
+                .fetchSize(300)
+                .dataSource(dataSource)
+                .rowMapper(new CustomerRowMapper())
+                .queryProvider(asyncWriterQueryProvider())
+//                .parameterValues(parameters)
+                .build();
+    }
+
+    @Bean
+    public PagingQueryProvider asyncWriterQueryProvider() throws Exception {
+        SqlPagingQueryProviderFactoryBean factory = new SqlPagingQueryProviderFactoryBean();
+        factory.setDataSource(dataSource);
+        factory.setSelectClause("id,firstname,lastname,birthdate");
+        factory.setFromClause("from customer");
+//        factory.setWhereClause("where firstname like :firstname");
+
+        Map<String, Order> sortKeys = new HashMap<>(1);
+        sortKeys.put("id", Order.ASCENDING);
+
+        factory.setSortKeys(sortKeys);
+
+        return factory.getObject();
+    }
 
     /**
      * retry 적용
