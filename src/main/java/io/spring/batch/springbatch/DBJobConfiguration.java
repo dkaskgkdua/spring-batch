@@ -12,6 +12,7 @@ import io.spring.batch.springbatch.reader.CustomItemStreamReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
 import io.spring.batch.springbatch.reader.mapper.CustomerRowMapper;
 import io.spring.batch.springbatch.service.CustomService;
+import io.spring.batch.springbatch.tasklet.*;
 import io.spring.batch.springbatch.writer.CustomItemStreamWriter;
 import io.spring.batch.springbatch.writer.CustomItemWriter;
 import io.spring.batch.springbatch.writer.SkipItemWriter;
@@ -28,11 +29,10 @@ import org.springframework.batch.core.job.flow.JobExecutionDecider;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.job.DefaultJobParametersExtractor;
-import org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy;
 import org.springframework.batch.core.step.skip.LimitCheckingItemSkipPolicy;
-import org.springframework.batch.core.step.skip.NeverSkipItemSkipPolicy;
 import org.springframework.batch.core.step.skip.SkipPolicy;
 import org.springframework.batch.core.step.tasklet.Tasklet;
+import org.springframework.batch.core.step.tasklet.TaskletStep;
 import org.springframework.batch.integration.async.AsyncItemProcessor;
 import org.springframework.batch.integration.async.AsyncItemWriter;
 import org.springframework.batch.item.*;
@@ -59,7 +59,6 @@ import org.springframework.batch.item.support.ClassifierCompositeItemProcessor;
 import org.springframework.batch.item.support.ListItemReader;
 import org.springframework.batch.item.support.builder.CompositeItemProcessorBuilder;
 import org.springframework.batch.item.xml.StaxEventItemReader;
-import org.springframework.batch.item.xml.StaxEventItemWriter;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
 import org.springframework.batch.item.xml.builder.StaxEventItemWriterBuilder;
 import org.springframework.batch.repeat.CompletionPolicy;
@@ -102,6 +101,49 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+
+    /**
+     * parallel step
+     */
+    @Bean
+    public Job parallelJob() {
+        return jobBuilderFactory.get("parallelJob")
+                .incrementer(new RunIdIncrementer())
+                .start(parallelFlow1())
+                .split(taskExecutor()).add(parallelFlow2())
+                .end()
+                .listener(new StopWatchJobListener())
+                .build();
+    }
+
+    @Bean
+    public Flow parallelFlow1() {
+        TaskletStep parallelStep = stepBuilderFactory.get("parallelStep")
+                .tasklet(tasklet()).build();
+
+        return new FlowBuilder<Flow>("parallelFlow1")
+                .start(parallelStep)
+                .build();
+    }
+    @Bean
+    public Flow parallelFlow2() {
+        TaskletStep parallelStep2 = stepBuilderFactory.get("parallelStep2")
+                .tasklet(tasklet()).build();
+        TaskletStep parallelStep3 = stepBuilderFactory.get("parallelStep3")
+                .tasklet(tasklet()).build();
+
+        return new FlowBuilder<Flow>("parallelFlow2")
+                .start(parallelStep2)
+                .next(parallelStep3)
+                .build();
+    }
+
+    @Bean
+    public Tasklet tasklet() {
+        return new ParallelTasklet();
+    }
+
 
     /**
      * multi-threaded
