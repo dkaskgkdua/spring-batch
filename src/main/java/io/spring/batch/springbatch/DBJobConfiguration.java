@@ -56,7 +56,9 @@ import org.springframework.batch.item.json.builder.JsonFileItemWriterBuilder;
 import org.springframework.batch.item.json.builder.JsonItemReaderBuilder;
 import org.springframework.batch.item.support.ClassifierCompositeItemProcessor;
 import org.springframework.batch.item.support.ListItemReader;
+import org.springframework.batch.item.support.SynchronizedItemStreamReader;
 import org.springframework.batch.item.support.builder.CompositeItemProcessorBuilder;
+import org.springframework.batch.item.support.builder.SynchronizedItemStreamReaderBuilder;
 import org.springframework.batch.item.xml.StaxEventItemReader;
 import org.springframework.batch.item.xml.builder.StaxEventItemReaderBuilder;
 import org.springframework.batch.item.xml.builder.StaxEventItemWriterBuilder;
@@ -100,6 +102,61 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+
+    /**
+     * synchronizedItemStreamReaderJob
+     */
+    @Bean
+    public Job synchronizedItemStreamReaderJob() throws Exception {
+        return jobBuilderFactory.get("synchronizedItemStreamReaderJob")
+                .incrementer(new RunIdIncrementer())
+                .start(synchronizedItemStreamReaderStep())
+                .build();
+    }
+
+    @Bean
+    public Step synchronizedItemStreamReaderStep() {
+        return stepBuilderFactory.get("synchronizedItemStreamReaderStep")
+                .<Customer3, Customer3>chunk(60)
+                .reader(synchronizedItemStreamReader())
+                .listener(new ItemReadListener<Customer3>() {
+                    @Override
+                    public void beforeRead() {
+
+                    }
+
+                    @Override
+                    public void afterRead(Customer3 customer3) {
+                        System.out.println("Thread : " + Thread.currentThread().getName() + ", item.getId() : " + customer3.getId());
+                    }
+
+                    @Override
+                    public void onReadError(Exception e) {
+
+                    }
+                })
+                .writer(partitioningItemWrtier())
+                .taskExecutor(taskExecutor())
+                .build();
+    }
+
+    @Bean
+    @StepScope
+    public SynchronizedItemStreamReader<Customer3> synchronizedItemStreamReader() {
+        // non safety reader를 synchronized 객체를 이용해 래핑하여 동시성 이슈를 해결한다.
+        JdbcCursorItemReader<Customer3> notSafetyReader = new JdbcCursorItemReaderBuilder<Customer3>()
+                .fetchSize(60)
+                .dataSource(dataSource)
+                .rowMapper(new BeanPropertyRowMapper<>(Customer3.class))
+                .sql("select id, firstname, lastname, birthdate from customer")
+                .name("NotSafetyReader")
+                .build();
+
+        return new SynchronizedItemStreamReaderBuilder<Customer3>()
+                .delegate(notSafetyReader)
+                .build();
+
+    }
 
     /**
      * partitioning
