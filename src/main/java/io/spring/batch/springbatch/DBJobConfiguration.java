@@ -104,6 +104,24 @@ public class DBJobConfiguration {
     private final EntityManagerFactory entityManagerFactory;
 
     /**
+     * job, step execution listener
+     */
+    public Job listenerJob() throws Exception {
+        return jobBuilderFactory.get("listenerJob")
+                .incrementer(new RunIdIncrementer())
+                .start(step6())
+                .next(step7())
+//                .listener(new CustomJobListener())
+                .listener(new CustomJobAnnotationListener())
+                .listener(new CustomChunkListener())
+                .listener(new CustomItemReadListener())
+                .listener(new CustomItemProcessListener())
+                .listener(new CustomItemWriterListener())
+                .build();
+    }
+
+
+    /**
      * synchronizedItemStreamReaderJob
      */
     @Bean
