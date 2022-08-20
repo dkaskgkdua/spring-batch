@@ -10,6 +10,7 @@ import io.spring.batch.springbatch.partitioner.ColumnRangePartitioner;
 import io.spring.batch.springbatch.processor.*;
 import io.spring.batch.springbatch.reader.CustomItemReader;
 import io.spring.batch.springbatch.reader.CustomItemStreamReader;
+import io.spring.batch.springbatch.reader.LinkedListItemReader;
 import io.spring.batch.springbatch.reader.mapper.CustomerFieldSetMapper;
 import io.spring.batch.springbatch.reader.mapper.CustomerRowMapper;
 import io.spring.batch.springbatch.service.CustomService;
@@ -104,8 +105,60 @@ public class DBJobConfiguration {
     private final EntityManagerFactory entityManagerFactory;
 
     /**
+     * skip, retry listener
+     */
+    @Bean
+    public Job skipRetryListenerJob() throws Exception {
+        return jobBuilderFactory.get("skipRetryListenerJob")
+                .incrementer(new RunIdIncrementer())
+                .start(skipRetryListenerStep())
+                .build();
+    }
+
+    public Step skipRetryListenerStep() throws Exception {
+        return stepBuilderFactory.get("skipRetryListenerStep")
+               .<Integer, String>chunk(10)
+                .reader(linkedListItemReader())
+                .processor(new ItemProcessor<Integer, String>() {
+                    @Override
+                    public String process(Integer integer) throws Exception {
+                        if(integer == 4) {
+                            throw new SkippableException("process skipped");
+                        }
+                        return "item" + integer;
+                    }
+                })
+                .writer(new ItemWriter<String>() {
+                    @Override
+                    public void write(List<? extends String> items) throws Exception {
+                        for(String item : items) {
+                            if(item.equals("item5")) {
+                                throw new SkippableException("write skipped");
+                            }
+                            System.out.println("write = " + item);
+                        }
+                    }
+                })
+                .faultTolerant()
+                .skip(SkippableException.class)
+                .skipLimit(2)
+                .listener(new CustomSkipListener())
+                .retry(RetryableException.class)
+                .retryLimit(2)
+                .listener(new CustomRetryListener())
+                .build();
+    }
+
+    @Bean
+    public ItemReader<Integer> linkedListItemReader() {
+        List<Integer> list = Arrays.asList(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        return new LinkedListItemReader<>(list);
+    }
+
+    /**
      * job, step execution listener
      */
+    @Bean
     public Job listenerJob() throws Exception {
         return jobBuilderFactory.get("listenerJob")
                 .incrementer(new RunIdIncrementer())
