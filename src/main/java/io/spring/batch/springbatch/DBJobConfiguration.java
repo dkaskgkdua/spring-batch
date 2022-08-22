@@ -20,10 +20,12 @@ import io.spring.batch.springbatch.writer.CustomItemWriter;
 import io.spring.batch.springbatch.writer.SkipItemWriter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.batch.core.*;
+import org.springframework.batch.core.configuration.JobRegistry;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.JobScope;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.core.configuration.support.JobRegistryBeanPostProcessor;
 import org.springframework.batch.core.job.DefaultJobParametersValidator;
 import org.springframework.batch.core.job.builder.FlowBuilder;
 import org.springframework.batch.core.job.flow.Flow;
@@ -73,6 +75,7 @@ import org.springframework.batch.repeat.policy.SimpleCompletionPolicy;
 import org.springframework.batch.repeat.policy.TimeoutTerminationPolicy;
 import org.springframework.batch.repeat.support.RepeatTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
@@ -103,6 +106,48 @@ public class DBJobConfiguration {
     private final JobRepositoryListener jobRepositoryListener;
     private final DataSource dataSource;
     private final EntityManagerFactory entityManagerFactory;
+    private final JobRegistry jobRegistry;
+    private boolean k = false;
+    private boolean m = false;
+
+    /**
+     * jobOperator
+     */
+    @Bean
+    public Job jobOperatorJob() throws Exception {
+        return jobBuilderFactory.get("jobOperatorJob")
+                .incrementer(new RunIdIncrementer())
+                .start(jobOperatorStep())
+                .next(jobOperatorStep2())
+                .build();
+    }
+
+    @Bean
+    public Step jobOperatorStep() throws Exception {
+        return stepBuilderFactory.get("jobOperatorStep")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("step1 was executed");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+    @Bean
+    public Step jobOperatorStep2() throws Exception {
+        return stepBuilderFactory.get("jobOperatorStep2")
+                .tasklet((stepContribution, chunkContext) -> {
+                    System.out.println("step2 was executed");
+                    return RepeatStatus.FINISHED;
+                })
+                .build();
+    }
+
+    @Bean
+    public BeanPostProcessor jobRegistryBeanPostProcessor() throws Exception {
+        JobRegistryBeanPostProcessor jobRegistryBeanPostProcessor = new JobRegistryBeanPostProcessor();
+        jobRegistryBeanPostProcessor.setJobRegistry(jobRegistry);
+        return jobRegistryBeanPostProcessor;
+
+    }
 
     /**
      * skip, retry listener
@@ -122,8 +167,13 @@ public class DBJobConfiguration {
                 .processor(new ItemProcessor<Integer, String>() {
                     @Override
                     public String process(Integer integer) throws Exception {
+                        System.out.println("process : " + integer);
                         if(integer == 4) {
-                            throw new SkippableException("process skipped");
+                            if(!m) {
+                                m = true;
+                                throw new RetryableException("process skipped");
+                            }
+
                         }
                         return "item" + integer;
                     }
@@ -133,7 +183,14 @@ public class DBJobConfiguration {
                     public void write(List<? extends String> items) throws Exception {
                         for(String item : items) {
                             if(item.equals("item5")) {
-                                throw new SkippableException("write skipped");
+                                System.out.println("write skip!!");
+                                if(!k) {
+                                    k = true;
+                                    throw new RetryableException("write skipped");
+                                }
+                            }
+                            if(item.equals("item7")) {
+                                throw new RetryableException("write skipped2");
                             }
                             System.out.println("write = " + item);
                         }

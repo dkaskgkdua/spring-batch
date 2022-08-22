@@ -1,12 +1,19 @@
 ###
-POST http://localhost:8077/batch
+POST http://localhost:8077/batch/start
 Content-Type: application/json
 
 {
   "id": "leaven"
 }
 ###
-POST http://localhost:8077/asy-batch
+POST http://localhost:8077/batch/stop
+Content-Type: application/json
+
+{
+  "id": "leaven"
+}
+###
+POST http://localhost:8077/batch/restart
 Content-Type: application/json
 
 {

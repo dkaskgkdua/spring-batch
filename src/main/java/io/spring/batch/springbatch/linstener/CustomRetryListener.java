@@ -9,7 +9,7 @@ public class CustomRetryListener implements RetryListener {
     @Override
     public <T, E extends Throwable> boolean open(RetryContext retryContext, RetryCallback<T, E> retryCallback) {
         System.out.println("open");
-        return false;
+        return true;
     }
 
     @Override
