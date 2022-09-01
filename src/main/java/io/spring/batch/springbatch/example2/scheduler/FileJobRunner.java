@@ -20,7 +20,7 @@ public class FileJobRunner extends CommonJobRunner {
     protected void doRun(ApplicationArguments args) {
         String[] sourceArgs = args.getSourceArgs();
 
-        JobDetail jobDetail = buildJobDetail(ApiSchJob.class, "example2FileJob", "batch", new HashMap());
+        JobDetail jobDetail = buildJobDetail(FileSchJob.class, "example2FileJob", "batch", new HashMap());
         Trigger trigger = buildJobTrigger("0/50 * * * * ?");
         jobDetail.getJobDataMap().put("requestDate", sourceArgs[0]);
 
